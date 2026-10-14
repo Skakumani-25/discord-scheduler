@@ -1,18 +1,39 @@
 import "dotenv/config";
 import express from "express";
+import cookieParser from "cookie-parser";
+import { prisma } from "./db";
+import authRouter from "./routes/auth";
+import { requireAuth } from "./middleware/auth";
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-import { prisma } from "./db";
-
 app.get("/health/db", async (_req, res) => {
   const count = await prisma.user.count();
   res.json({ ok: true, users: count });
+});
+
+app.use("/auth", authRouter);
+
+app.get("/api/me", requireAuth, async (_req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: res.locals.userId },
+  });
+  if (!user) {
+    res.status(401).json({ error: "User not found" });
+    return;
+  }
+  res.json(user);
+});
+
+app.post("/api/logout", (_req, res) => {
+  res.clearCookie("token");
+  res.json({ ok: true });
 });
 
 const PORT = process.env.PORT || 3000;
