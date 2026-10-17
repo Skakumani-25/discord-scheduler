@@ -28,7 +28,7 @@ function App() {
 
   return (
     <div style={{ padding: 24 }}>
-      <h1>Discord Scheduler</h1>
+      <h1>Discord Scheduler!</h1>
       {user ? (
         <div>
           {user.avatar && (
