@@ -5,6 +5,7 @@ import { prisma } from "./db";
 import authRouter from "./routes/auth";
 import { requireAuth } from "./middleware/auth";
 import path from "node:path";
+import availabilityRouter from "./routes/availability";
 
 const app = express();
 app.use(express.json());
@@ -36,6 +37,8 @@ app.post("/api/logout", (_req, res) => {
   res.clearCookie("token");
   res.json({ ok: true });
 });
+
+app.use("/api/availability", requireAuth, availabilityRouter);
 
 if (process.env.NODE_ENV === "production") {
   const clientDist = path.join(__dirname, "../../client/dist");

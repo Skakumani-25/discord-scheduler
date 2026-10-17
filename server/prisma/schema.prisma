@@ -21,4 +21,26 @@ model User {
   timezone  String   @default("UTC")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  availability AvailabilityBlock[]
+}
+
+enum Category {
+  GAMING
+  STUDYING
+  TALKING
+  MOVIE
+  OTHER
+}
+
+model AvailabilityBlock {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  Category
+  startsAt  DateTime
+  endsAt    DateTime
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, startsAt])
 }
