@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Availability from "./Availability";
 
 type User = {
   id: string;
