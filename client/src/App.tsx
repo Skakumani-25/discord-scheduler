@@ -31,22 +31,23 @@ function App() {
     <div style={{ padding: 24 }}>
       <h1>Discord Scheduler!</h1>
       {user ? (
-        <div>
-          {user.avatar && (
-            <img
-              src={`https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png?size=64`}
-              alt="avatar"
-              width={64}
-              height={64}
-              style={{ borderRadius: "50%" }}
-            />
-          )}
-          <p>Logged in as <strong>{user.username}</strong></p>
-          <button onClick={logout}>Log out</button>
-        </div>
-      ) : (
-        <a href="/auth/discord">Login with Discord</a>
-      )}
+  <div>
+    {user.avatar && (
+      <img
+        src={`https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png?size=64`}
+        alt="avatar"
+        width={64}
+        height={64}
+        style={{ borderRadius: "50%" }}
+      />
+    )}
+    <p>Logged in as <strong>{user.username}</strong></p>
+    <button onClick={logout}>Log out</button>
+    <Availability />
+  </div>
+) : (
+  <a href="/auth/discord">Login with Discord</a>
+)}
     </div>
   );
 }
