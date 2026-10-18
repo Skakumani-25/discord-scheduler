@@ -2,6 +2,7 @@ import { Router } from "express";
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import { prisma } from "../db";
+import { encryptSecret } from "../services/tokenCrypto";
 
 const router = Router();
 const DISCORD_API = "https://discord.com/api";
@@ -53,7 +54,7 @@ router.get("/discord/callback", async (req, res) => {
     res.status(400).send("Discord token exchange failed");
     return;
   }
-  const token = (await tokenRes.json()) as { access_token: string };
+  const token = (await tokenRes.json()) as { access_token: string; expires_in: number };
 
   // Fetch the Discord profile
   const userRes = await fetch(`${DISCORD_API}/users/@me`, {
@@ -66,17 +67,25 @@ router.get("/discord/callback", async (req, res) => {
     avatar: string | null;
   };
 
+  // Kept (encrypted) so we can list the user's servers later; never returned or logged
+  const discordAuth = {
+    discordAccessToken: encryptSecret(token.access_token),
+    discordTokenExpiresAt: new Date(Date.now() + token.expires_in * 1000),
+  };
+
   // Create or update the user in our database
   const user = await prisma.user.upsert({
     where: { discordId: profile.id },
     update: {
       username: profile.global_name ?? profile.username,
       avatar: profile.avatar,
+      ...discordAuth,
     },
     create: {
       discordId: profile.id,
       username: profile.global_name ?? profile.username,
       avatar: profile.avatar,
+      ...discordAuth,
     },
   });
 

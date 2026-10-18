@@ -21,6 +21,7 @@ router.get("/", async (_req, res) => {
       id: m.group.id,
       name: m.group.name,
       inviteCode: m.group.inviteCode,
+      type: m.group.type,
       role: m.role,
       memberCount: m.group._count.members,
     }))
@@ -51,6 +52,11 @@ router.post("/join", async (req, res) => {
   const group = await prisma.group.findUnique({ where: { inviteCode: code } });
   if (!group) {
     res.status(404).json({ error: "Invalid invite code" });
+    return;
+  }
+  // Server groups are joined through Discord so membership is verified
+  if (group.type === "DISCORD_SERVER") {
+    res.status(400).json({ error: "Join Discord server groups from the Discord servers panel" });
     return;
   }
   await prisma.groupMember.upsert({
@@ -97,6 +103,9 @@ router.get("/:id", async (req, res) => {
     id: group.id,
     name: group.name,
     inviteCode: group.inviteCode,
+    type: group.type,
+    discordGuildId: group.discordGuildId,
+    role: membership.role,
     members: group.members,
     blocks,
   });

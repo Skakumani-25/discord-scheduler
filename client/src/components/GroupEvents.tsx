@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { MeetingChannel } from "./MeetingChannels";
 
 const CATEGORIES = ["GAMING", "STUDYING", "TALKING", "MOVIE", "OTHER"];
 
@@ -10,6 +11,7 @@ type GroupEvent = {
   startsAt: string;
   endsAt: string;
   description: string | null;
+  voiceChannelId: string | null;
   creator: { id: string; username: string };
   counts: Record<RsvpStatus, number>;
   myStatus: RsvpStatus | null;
@@ -41,10 +43,12 @@ function toLocalInput(iso: string, roundUp: boolean) {
 function CreateEventForm({
   groupId,
   prefill,
+  meetingChannels,
   onCreated,
 }: {
   groupId: string;
   prefill: EventPrefill | null;
+  meetingChannels: MeetingChannel[] | null;
   onCreated: () => void;
 }) {
   const [title, setTitle] = useState("");
@@ -53,6 +57,7 @@ function CreateEventForm({
   const [start, setStart] = useState(prefill ? toLocalInput(prefill.startsAt, true) : "");
   const [end, setEnd] = useState(prefill ? toLocalInput(prefill.endsAt, false) : "");
   const [description, setDescription] = useState("");
+  const [voiceChannelId, setVoiceChannelId] = useState("");
   const [error, setError] = useState("");
 
   async function create() {
@@ -66,6 +71,7 @@ function CreateEventForm({
         startsAt: start ? new Date(start).toISOString() : "",
         endsAt: end ? new Date(end).toISOString() : "",
         description,
+        voiceChannelId: voiceChannelId || undefined,
       }),
     });
     if (!res.ok) {
@@ -74,6 +80,7 @@ function CreateEventForm({
     }
     setTitle("");
     setDescription("");
+    setVoiceChannelId("");
     onCreated();
   }
 
@@ -95,6 +102,16 @@ function CreateEventForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+        {meetingChannels && meetingChannels.length > 0 && (
+          <select value={voiceChannelId} onChange={(e) => setVoiceChannelId(e.target.value)}>
+            <option value="">No voice channel</option>
+            {meetingChannels.map((c) => (
+              <option key={c.channelId} value={c.channelId}>
+                🔊 {c.label}
+              </option>
+            ))}
+          </select>
+        )}
         <button onClick={create}>Create</button>
       </div>
       {error && <p style={{ color: "red" }}>{error}</p>}
@@ -105,9 +122,12 @@ function CreateEventForm({
 export default function GroupEvents({
   groupId,
   prefill,
+  meetingChannels,
 }: {
   groupId: string;
   prefill: EventPrefill | null;
+  // null for custom groups, which have no voice channels
+  meetingChannels: MeetingChannel[] | null;
 }) {
   const [events, setEvents] = useState<GroupEvent[]>([]);
   const [error, setError] = useState("");
@@ -154,6 +174,13 @@ export default function GroupEvents({
             <div>
               {new Date(ev.startsAt).toLocaleString()} to {new Date(ev.endsAt).toLocaleString()}
             </div>
+            {ev.voiceChannelId && (
+              <div>
+                🔊{" "}
+                {meetingChannels?.find((c) => c.channelId === ev.voiceChannelId)?.label ??
+                  "Voice channel"}
+              </div>
+            )}
             {ev.description && <div>{ev.description}</div>}
             <div>
               {ev.counts.GOING} going, {ev.counts.MAYBE} maybe, {ev.counts.NOT_GOING} can't go
@@ -179,7 +206,13 @@ export default function GroupEvents({
         ))}
       </ul>
 
-      <CreateEventForm key={prefill?.nonce ?? 0} groupId={groupId} prefill={prefill} onCreated={reload} />
+      <CreateEventForm
+        key={prefill?.nonce ?? 0}
+        groupId={groupId}
+        prefill={prefill}
+        meetingChannels={meetingChannels}
+        onCreated={reload}
+      />
     </section>
   );
 }

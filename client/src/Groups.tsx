@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import GroupDetail, { type GroupDetailData } from "./components/GroupDetail";
+import DiscordServers from "./components/DiscordServers";
 
 type GroupSummary = {
   id: string;
   name: string;
   inviteCode: string;
+  type: "CUSTOM" | "DISCORD_SERVER";
   role: string;
   memberCount: number;
 };
@@ -75,11 +77,25 @@ export default function Groups() {
       <ul>
         {groups.map((g) => (
           <li key={g.id}>
-            <button onClick={() => open(g.id)}>{g.name}</button> ({g.memberCount} members, code:{" "}
-            <code>{g.inviteCode}</code>)
+            <button onClick={() => open(g.id)}>{g.name}</button> ({g.memberCount} members
+            {g.type === "DISCORD_SERVER" ? (
+              ", Discord server"
+            ) : (
+              <>
+                , code: <code>{g.inviteCode}</code>
+              </>
+            )}
+            )
           </li>
         ))}
       </ul>
+
+      <DiscordServers
+        onOpenGroup={(id) => {
+          loadGroups();
+          open(id);
+        }}
+      />
 
       {selected && <GroupDetail key={selected.id} group={selected} />}
     </div>

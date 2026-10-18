@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import GroupEvents, { type EventPrefill } from "./GroupEvents";
+import MeetingChannels, { type MeetingChannel } from "./MeetingChannels";
 
 const CATEGORIES = ["ALL", "GAMING", "STUDYING", "TALKING", "MOVIE", "OTHER"];
 
@@ -19,10 +20,18 @@ export type GroupDetailData = {
   id: string;
   name: string;
   inviteCode: string;
+  type: "CUSTOM" | "DISCORD_SERVER";
+  discordGuildId: string | null;
+  role: "OWNER" | "MEMBER";
   members: Member[];
   blocks: Block[];
 };
 type OverlapWindow = { startsAt: string; endsAt: string };
+type MeetingInfo = { channels: MeetingChannel[]; canManage: boolean };
+
+function fetchMeetingInfo(groupId: string): Promise<MeetingInfo | null> {
+  return fetch(`/api/groups/${groupId}/meeting-channels`).then((res) => (res.ok ? res.json() : null));
+}
 
 function formatDuration(ms: number) {
   const totalMinutes = Math.round(ms / 60_000);
@@ -43,6 +52,17 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
   const [overlapError, setOverlapError] = useState("");
   const [searching, setSearching] = useState(false);
   const [prefill, setPrefill] = useState<EventPrefill | null>(null);
+
+  const isServerGroup = group.type === "DISCORD_SERVER";
+  const [meeting, setMeeting] = useState<MeetingInfo | null>(null);
+
+  useEffect(() => {
+    if (isServerGroup) fetchMeetingInfo(group.id).then(setMeeting);
+  }, [group.id, isServerGroup]);
+
+  async function reloadMeeting() {
+    setMeeting(await fetchMeetingInfo(group.id));
+  }
 
   // Send an overlap window to the Create event form
   function prefillFromWindow(w: OverlapWindow) {
@@ -93,7 +113,14 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
 
   return (
     <div>
-      <h3>{group.name}</h3>
+      <h3>
+        {group.name}
+        {isServerGroup && <small> (Discord server)</small>}
+      </h3>
+
+      {meeting?.canManage && (
+        <MeetingChannels groupId={group.id} channels={meeting.channels} onChange={reloadMeeting} />
+      )}
 
       <section style={{ marginTop: 12, padding: 12, border: "1px solid #ccc", borderRadius: 8 }}>
         <h4 style={{ marginTop: 0 }}>Find overlap</h4>
@@ -148,7 +175,11 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
         )}
       </section>
 
-      <GroupEvents groupId={group.id} prefill={prefill} />
+      <GroupEvents
+        groupId={group.id}
+        prefill={prefill}
+        meetingChannels={isServerGroup ? (meeting?.channels ?? []) : null}
+      />
 
       <h4>Member availability</h4>
       <label>

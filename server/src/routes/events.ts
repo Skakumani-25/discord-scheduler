@@ -19,6 +19,7 @@ type EventWithRsvps = {
   startsAt: Date;
   endsAt: Date;
   description: string | null;
+  voiceChannelId: string | null;
   creator: { id: string; username: string };
   rsvps: { userId: string; status: RsvpStatus }[];
 };
@@ -35,6 +36,7 @@ function serializeEvent(event: EventWithRsvps, userId: string, isOwner: boolean)
     startsAt: event.startsAt,
     endsAt: event.endsAt,
     description: event.description,
+    voiceChannelId: event.voiceChannelId,
     creator: event.creator,
     counts,
     myStatus: event.rsvps.find((r) => r.userId === userId)?.status ?? null,
@@ -56,7 +58,8 @@ router.post("/groups/:id/events", async (req, res) => {
     return;
   }
 
-  const { title: rawTitle, category, startsAt, endsAt, description } = req.body ?? {};
+  const { title: rawTitle, category, startsAt, endsAt, description, voiceChannelId } =
+    req.body ?? {};
   const title = typeof rawTitle === "string" ? rawTitle.trim() : "";
   const start = new Date(startsAt);
   const end = new Date(endsAt);
@@ -78,6 +81,22 @@ router.post("/groups/:id/events", async (req, res) => {
     return;
   }
 
+  // Optional, but must be one of the group's meeting channels
+  let channelId: string | null = null;
+  if (voiceChannelId !== undefined && voiceChannelId !== null && voiceChannelId !== "") {
+    const meetingChannel =
+      typeof voiceChannelId === "string"
+        ? await prisma.meetingChannel.findUnique({
+            where: { groupId_channelId: { groupId: req.params.id, channelId: voiceChannelId } },
+          })
+        : null;
+    if (!meetingChannel) {
+      res.status(400).json({ error: "Voice channel must be one of this group's meeting channels" });
+      return;
+    }
+    channelId = meetingChannel.channelId;
+  }
+
   const event = await prisma.event.create({
     data: {
       groupId: req.params.id,
@@ -88,6 +107,7 @@ router.post("/groups/:id/events", async (req, res) => {
       endsAt: end,
       description:
         typeof description === "string" && description.trim() ? description.trim() : null,
+      voiceChannelId: channelId,
       rsvps: { create: { userId, status: RsvpStatus.GOING } },
     },
     include: eventInclude,

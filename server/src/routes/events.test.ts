@@ -7,6 +7,7 @@ const prismaMock = vi.hoisted(() => ({
   groupMember: { findUnique: vi.fn() },
   event: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
   eventRsvp: { upsert: vi.fn() },
+  meetingChannel: { findUnique: vi.fn() },
 }));
 vi.mock("../db", () => ({ prisma: prismaMock }));
 
@@ -155,6 +156,7 @@ describe("POST /groups/:id/events", () => {
       startsAt: data.startsAt,
       endsAt: data.endsAt,
       description: null,
+      voiceChannelId: data.voiceChannelId,
       creator: { id: ALICE, username: "Alice" },
       rsvps: [{ userId: ALICE, status: "GOING" }],
     }));
@@ -168,6 +170,31 @@ describe("POST /groups/:id/events", () => {
     const json = await res.json();
     expect(json.myStatus).toBe("GOING");
     expect(json.counts).toEqual({ GOING: 1, MAYBE: 0, NOT_GOING: 0 });
+  });
+
+  it("accepts a voiceChannelId that is one of the group's meeting channels", async () => {
+    prismaMock.meetingChannel.findUnique.mockResolvedValue({ groupId: GROUP, channelId: "vc1" });
+    prismaMock.event.create.mockImplementation(async ({ data }) => ({
+      ...data,
+      id: EVENT,
+      creator: { id: ALICE, username: "Alice" },
+      rsvps: [],
+    }));
+
+    const res = await call("POST", `/groups/${GROUP}/events`, ALICE, { ...validEvent(), voiceChannelId: "vc1" });
+
+    expect(res.status).toBe(201);
+    expect(prismaMock.meetingChannel.findUnique).toHaveBeenCalledWith({
+      where: { groupId_channelId: { groupId: GROUP, channelId: "vc1" } },
+    });
+    expect(prismaMock.event.create.mock.calls[0][0].data.voiceChannelId).toBe("vc1");
+  });
+
+  it("rejects a voiceChannelId that is not a meeting channel of the group", async () => {
+    prismaMock.meetingChannel.findUnique.mockResolvedValue(null);
+    const res = await call("POST", `/groups/${GROUP}/events`, ALICE, { ...validEvent(), voiceChannelId: "random" });
+    expect(res.status).toBe(400);
+    expect(prismaMock.event.create).not.toHaveBeenCalled();
   });
 
   it.each([
