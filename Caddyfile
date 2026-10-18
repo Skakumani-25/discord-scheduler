@@ -1,3 +1,7 @@
-skakumani-scheduler.duckdns.org {
+discord-scheduling.duckdns.org {
     reverse_proxy app:3000
+}
+
+skakumani-scheduler.duckdns.org {
+    redir https://newname.example.com{uri} permanent
 }
