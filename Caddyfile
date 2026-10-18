@@ -1,7 +1,8 @@
 discord-scheduling.duckdns.org {
-    reverse_proxy app:3000
+	reverse_proxy app:3000
 }
 
+# Old address: keep links and bookmarks working
 skakumani-scheduler.duckdns.org {
-    redir https://newname.example.com{uri} permanent
+	redir https://discord-scheduling.duckdns.org{uri} permanent
 }
