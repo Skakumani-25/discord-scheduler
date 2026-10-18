@@ -6,6 +6,7 @@ import {
   fetchGuildMember,
   getBotGuild,
   getVoiceChannel,
+  listPostableTextChannels,
   listVoiceChannels,
   memberCanManageGuild,
   requireBot,
@@ -206,6 +207,54 @@ router.get("/:id/voice-channels", async (req, res) => {
     return;
   }
   res.json(listVoiceChannels(guild));
+});
+
+// Text channels the bot can post in (OWNER only, for the announcement picker)
+router.get("/:id/text-channels", async (req, res) => {
+  const ctx = await loadServerGroup(req.params.id, res.locals.userId, res);
+  if (!ctx) return;
+  if (ctx.role !== "OWNER") {
+    res.status(403).json({ error: "Only the group owner can set the announcement channel" });
+    return;
+  }
+  requireBot();
+  const guild = getBotGuild(ctx.guildId);
+  if (!guild) {
+    res.status(409).json({ error: "The bot is no longer in this server" });
+    return;
+  }
+  res.json(listPostableTextChannels(guild));
+});
+
+// Set or clear the announcement channel { channelId: string | null } (OWNER only)
+router.put("/:id/announcement-channel", async (req, res) => {
+  const ctx = await loadServerGroup(req.params.id, res.locals.userId, res);
+  if (!ctx) return;
+  if (ctx.role !== "OWNER") {
+    res.status(403).json({ error: "Only the group owner can set the announcement channel" });
+    return;
+  }
+
+  const channelId = req.body?.channelId;
+  if (channelId !== null) {
+    requireBot();
+    const guild = getBotGuild(ctx.guildId);
+    if (!guild) {
+      res.status(409).json({ error: "The bot is no longer in this server" });
+      return;
+    }
+    const postable =
+      typeof channelId === "string" && listPostableTextChannels(guild).some((c) => c.id === channelId);
+    if (!postable) {
+      res.status(400).json({ error: "That is not a text channel in this server the bot can post in" });
+      return;
+    }
+  }
+  await prisma.group.update({
+    where: { id: ctx.group.id },
+    data: { announcementChannelId: channelId },
+  });
+  res.json({ announcementChannelId: channelId });
 });
 
 export default router;

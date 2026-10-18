@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import Availability from "./Availability";
 import Groups from "./Groups";
+import Settings from "./Settings";
+import MyStatus from "./MyStatus";
+import type { UserStatus } from "./status";
+import { TimezoneContext } from "./time";
 
 type User = {
   id: string;
@@ -8,6 +12,8 @@ type User = {
   username: string;
   avatar: string | null;
   timezone: string;
+  reminderMinutes: number;
+  status: UserStatus;
 };
 
 function App() {
@@ -44,8 +50,12 @@ function App() {
     )}
     <p>Logged in as <strong>{user.username}</strong></p>
     <button onClick={logout}>Log out</button>
-    <Availability />
-    <Groups />
+    <TimezoneContext.Provider value={user.timezone}>
+      <MyStatus current={user.status} onSaved={(status) => setUser({ ...user, status })} />
+      <Settings settings={user} onSaved={(s) => setUser({ ...user, ...s })} />
+      <Availability />
+      <Groups />
+    </TimezoneContext.Provider>
   </div>
 ) : (
   <a href="/auth/discord">Login with Discord</a>

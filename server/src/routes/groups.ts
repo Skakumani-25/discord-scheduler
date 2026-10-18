@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { Category } from "@prisma/client";
 import { prisma } from "../db";
 import { findOverlaps } from "../services/overlap";
+import { statusSelect, withEffectiveStatus } from "../services/userStatus";
 
 const router = Router();
 
@@ -82,7 +83,7 @@ router.get("/:id", async (req, res) => {
       members: {
         include: {
           user: {
-            select: { id: true, username: true, avatar: true, discordId: true },
+            select: { id: true, username: true, avatar: true, discordId: true, ...statusSelect },
           },
         },
       },
@@ -92,10 +93,11 @@ router.get("/:id", async (req, res) => {
     res.status(404).json({ error: "Not found" });
     return;
   }
+  const now = new Date();
   const blocks = await prisma.availabilityBlock.findMany({
     where: {
       userId: { in: group.members.map((m) => m.userId) },
-      endsAt: { gte: new Date() },
+      endsAt: { gte: now },
     },
     orderBy: { startsAt: "asc" },
   });
@@ -105,8 +107,10 @@ router.get("/:id", async (req, res) => {
     inviteCode: group.inviteCode,
     type: group.type,
     discordGuildId: group.discordGuildId,
+    announcementChannelId: group.announcementChannelId,
     role: membership.role,
-    members: group.members,
+    // Each member's user.status is their current status, or null if unset/expired
+    members: group.members.map((m) => ({ ...m, user: withEffectiveStatus(m.user, now) })),
     blocks,
   });
 });

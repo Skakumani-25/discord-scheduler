@@ -9,6 +9,8 @@ import groupsRouter from "./routes/groups";
 import serverGroupsRouter from "./routes/serverGroups";
 import eventsRouter from "./routes/events";
 import discordRouter from "./routes/discord";
+import meRouter from "./routes/me";
+import { withEffectiveStatus } from "./services/userStatus";
 import { BotUnavailableError } from "./services/discordBot";
 
 const app = express();
@@ -35,8 +37,10 @@ app.get("/api/me", requireAuth, async (_req, res) => {
     res.status(401).json({ error: "User not found" });
     return;
   }
-  res.json(user);
+  res.json(withEffectiveStatus(user));
 });
+
+app.use("/api/me", requireAuth, meRouter);
 
 app.post("/api/logout", (_req, res) => {
   res.clearCookie("token");

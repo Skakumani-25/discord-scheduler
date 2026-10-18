@@ -14,9 +14,10 @@ vi.hoisted(() => {
 
 const prismaMock = vi.hoisted(() => ({
   user: { findUnique: vi.fn(), count: vi.fn() },
-  group: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+  group: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   groupMember: { findUnique: vi.fn(), upsert: vi.fn() },
   meetingChannel: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+  availabilityBlock: { findMany: vi.fn() },
 }));
 vi.mock("../db", () => ({ prisma: prismaMock }));
 
@@ -37,6 +38,7 @@ const OTHER_GUILD = "222222222222222222";
 const NO_BOT_GUILD = "333333333333333333";
 const VOICE = "444444444444444444";
 const TEXT = "555555555555555555";
+const READ_ONLY_TEXT = "666666666666666666";
 
 const SERVER_GROUP = "server-group";
 const CUSTOM_GROUP = "custom-group";
@@ -70,6 +72,7 @@ const fakeGuild = {
   id: GUILD,
   name: "Test Server",
   members: {
+    me: { id: "bot" },
     fetch: vi.fn(async (id: string) => {
       if (!guildMembers.has(id)) throw Object.assign(new Error("Unknown Member"), { code: 10007 });
       const canManage = guildMembers.get(id);
@@ -80,7 +83,14 @@ const fakeGuild = {
   },
   channels: {
     cache: new Map<string, object>([
-      [TEXT, { id: TEXT, name: "general", type: ChannelType.GuildText, position: 0 }],
+      [
+        TEXT,
+        { id: TEXT, name: "general", type: ChannelType.GuildText, position: 0, permissionsFor: () => ({ has: () => true }) },
+      ],
+      [
+        READ_ONLY_TEXT,
+        { id: READ_ONLY_TEXT, name: "rules", type: ChannelType.GuildText, position: 2, permissionsFor: () => ({ has: () => false }) },
+      ],
       [VOICE, { id: VOICE, name: "Voice Lounge", type: ChannelType.GuildVoice, position: 1 }],
     ]),
   },
@@ -377,5 +387,81 @@ describe("meeting channels", () => {
   it("lists only voice channels for the picker", async () => {
     const res = await call("GET", `/api/groups/${SERVER_GROUP}/voice-channels`, MEMBER);
     expect(await res.json()).toEqual([{ id: VOICE, name: "Voice Lounge" }]);
+  });
+});
+
+describe("announcement channel", () => {
+  const path = `/api/groups/${SERVER_GROUP}/announcement-channel`;
+
+  it("lists only text channels the bot can post in, for the OWNER", async () => {
+    const res = await call("GET", `/api/groups/${SERVER_GROUP}/text-channels`, OWNER);
+    expect(await res.json()).toEqual([{ id: TEXT, name: "general" }]);
+    expect((await call("GET", `/api/groups/${SERVER_GROUP}/text-channels`, MANAGER)).status).toBe(403);
+  });
+
+  it("lets the OWNER set a postable text channel", async () => {
+    const res = await call("PUT", path, OWNER, { channelId: TEXT });
+    expect(res.status).toBe(200);
+    expect(prismaMock.group.update).toHaveBeenCalledWith({
+      where: { id: SERVER_GROUP },
+      data: { announcementChannelId: TEXT },
+    });
+  });
+
+  it("is OWNER only, even for server managers", async () => {
+    expect((await call("PUT", path, MANAGER, { channelId: TEXT })).status).toBe(403);
+    expect((await call("PUT", path, OUTSIDER, { channelId: TEXT })).status).toBe(404);
+    expect(prismaMock.group.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a voice channel", VOICE],
+    ["a channel the bot cannot post in", READ_ONLY_TEXT],
+    ["an unknown channel", "999999999999999999"],
+    ["a non-string", 42],
+  ])("rejects %s", async (_label, channelId) => {
+    expect((await call("PUT", path, OWNER, { channelId })).status).toBe(400);
+    expect(prismaMock.group.update).not.toHaveBeenCalled();
+  });
+
+  it("can be cleared with null, even while the bot is down", async () => {
+    botState.bot = null;
+    expect((await call("PUT", path, OWNER, { channelId: null })).status).toBe(200);
+    expect(prismaMock.group.update).toHaveBeenCalledWith({
+      where: { id: SERVER_GROUP },
+      data: { announcementChannelId: null },
+    });
+  });
+
+  it("is only for server groups", async () => {
+    const res = await call("PUT", `/api/groups/${CUSTOM_GROUP}/announcement-channel`, OWNER, { channelId: TEXT });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/groups/:id member statuses", () => {
+  it("shows each member's current status and hides expired ones and raw columns", async () => {
+    const user = (id: string, extra: object) => ({ id, username: id, avatar: null, discordId: discordId(id), ...extra });
+    prismaMock.group.findUnique.mockResolvedValue({
+      ...groups[SERVER_GROUP],
+      inviteCode: "ABCD1234",
+      announcementChannelId: null,
+      members: [
+        { userId: OWNER, user: user(OWNER, { status: "BUSY", statusNote: "in class", statusExpiresAt: null }) },
+        { userId: MEMBER, user: user(MEMBER, { status: "AWAY", statusNote: null, statusExpiresAt: new Date(Date.now() - 1000) }) },
+        { userId: MANAGER, user: user(MANAGER, { status: null, statusNote: null, statusExpiresAt: null }) },
+      ],
+    });
+    prismaMock.availabilityBlock.findMany.mockResolvedValue([]);
+
+    const body = await (await call("GET", `/api/groups/${SERVER_GROUP}`, MEMBER)).json();
+
+    const statuses = Object.fromEntries(body.members.map((m: { userId: string; user: { status: unknown } }) => [m.userId, m.user.status]));
+    expect(statuses).toEqual({
+      [OWNER]: { status: "BUSY", note: "in class", expiresAt: null },
+      [MEMBER]: null,
+      [MANAGER]: null,
+    });
+    expect(body.members[0].user).not.toHaveProperty("statusNote");
   });
 });

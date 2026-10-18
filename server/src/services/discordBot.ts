@@ -42,6 +42,20 @@ export function listVoiceChannels(guild: Guild) {
     .map((c) => ({ id: c.id, name: c.name }));
 }
 
+// Text channels the bot can post in, for the announcement picker
+export function listPostableTextChannels(guild: Guild) {
+  const me = guild.members.me;
+  return [...guild.channels.cache.values()]
+    .filter((c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement)
+    .filter(
+      (c) =>
+        !!me &&
+        c.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])
+    )
+    .sort((a, b) => a.position - b.position)
+    .map((c) => ({ id: c.id, name: c.name }));
+}
+
 export function getVoiceChannel(guild: Guild, channelId: string) {
   const channel = guild.channels.cache.get(channelId);
   return channel && channel.type === ChannelType.GuildVoice ? channel : null;

@@ -19,6 +19,13 @@ model User {
   username  String
   avatar    String?
   timezone  String   @default("UTC")
+  // Minutes before an event's start to send a reminder
+  reminderMinutes Int @default(15)
+  // Status shown to everyone in the user's groups; null means no status.
+  // Treated as cleared once statusExpiresAt passes (see services/userStatus.ts)
+  status          UserStatus?
+  statusNote      String?
+  statusExpiresAt DateTime?
   // AES-256-GCM encrypted; omitted from queries by default (see src/db.ts)
   discordAccessToken    String?
   discordTokenExpiresAt DateTime?
@@ -28,6 +35,14 @@ model User {
   memberships GroupMember[]
   createdEvents Event[]
   rsvps       EventRsvp[]
+  reminders   Reminder[]
+}
+
+enum UserStatus {
+  AVAILABLE
+  BUSY
+  AWAY
+  DND
 }
 
 enum Category {
@@ -67,6 +82,8 @@ model Group {
   inviteCode      String           @unique
   type            GroupType        @default(CUSTOM)
   discordGuildId  String?          @unique
+  // Text channel for new-event announcements and reminder fallbacks (server groups only)
+  announcementChannelId String?
   createdAt       DateTime         @default(now())
   members         GroupMember[]
   events          Event[]
@@ -105,6 +122,7 @@ model Event {
   voiceChannelId String?
   createdAt      DateTime    @default(now())
   rsvps          EventRsvp[]
+  reminders      Reminder[]
 
   @@index([groupId, startsAt])
 }
@@ -128,4 +146,18 @@ model MeetingChannel {
   label     String
 
   @@unique([groupId, channelId])
+}
+
+model Reminder {
+  id      String    @id @default(cuid())
+  eventId String
+  event   Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sendAt  DateTime
+  // Set when a scheduler run claims the reminder; null means not sent yet
+  sentAt  DateTime?
+
+  @@unique([eventId, userId, sendAt])
+  @@index([sentAt, sendAt])
 }

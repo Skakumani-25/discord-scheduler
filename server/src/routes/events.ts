@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { Category, RsvpStatus } from "@prisma/client";
 import { prisma } from "../db";
+import { recomputeEventReminders, syncReminder } from "../services/reminderSync";
+import { announceEvent } from "../bot/announcements";
 
 const router = Router();
 
@@ -112,6 +114,9 @@ router.post("/groups/:id/events", async (req, res) => {
     },
     include: eventInclude,
   });
+  await syncReminder(event.id, userId);
+  // Fire and forget; announceEvent never throws
+  void announceEvent(event.id);
   res.status(201).json(serializeEvent(event, userId, membership.role === "OWNER"));
 });
 
@@ -155,7 +160,52 @@ router.put("/events/:id/rsvp", async (req, res) => {
     update: { status },
     create: { eventId: event.id, userId, status },
   });
+  // Creates/moves the reminder for GOING or MAYBE, removes unsent ones for NOT_GOING
+  await syncReminder(event.id, userId);
   res.json({ eventId: rsvp.eventId, status: rsvp.status });
+});
+
+// Change an event's time (creator or group OWNER only); reminders follow the new start
+router.patch("/events/:id", async (req, res) => {
+  const userId = res.locals.userId;
+  const event = await prisma.event.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, groupId: true, creatorId: true, startsAt: true, endsAt: true },
+  });
+  const membership = event && (await getMembership(event.groupId, userId));
+  if (!event || !membership) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (event.creatorId !== userId && membership.role !== "OWNER") {
+    res.status(403).json({ error: "Only the creator or group owner can edit this event" });
+    return;
+  }
+
+  const { startsAt, endsAt } = req.body ?? {};
+  if (startsAt === undefined && endsAt === undefined) {
+    res.status(400).json({ error: "Nothing to update" });
+    return;
+  }
+  const start = startsAt === undefined ? event.startsAt : new Date(startsAt);
+  const end = endsAt === undefined ? event.endsAt : new Date(endsAt);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+    res.status(400).json({ error: "End time must be after start time" });
+    return;
+  }
+  const startChanged = start.getTime() !== event.startsAt.getTime();
+  if (startChanged && start <= new Date()) {
+    res.status(400).json({ error: "Start time must be in the future" });
+    return;
+  }
+
+  const updated = await prisma.event.update({
+    where: { id: event.id },
+    data: { startsAt: start, endsAt: end },
+    include: eventInclude,
+  });
+  if (startChanged) await recomputeEventReminders(event.id);
+  res.json(serializeEvent(updated, userId, membership.role === "OWNER"));
 });
 
 // Delete an event (creator or group OWNER only)
@@ -174,6 +224,7 @@ router.delete("/events/:id", async (req, res) => {
     res.status(403).json({ error: "Only the creator or group owner can delete this event" });
     return;
   }
+  // Reminders are removed by the cascade
   await prisma.event.delete({ where: { id: event.id } });
   res.json({ ok: true });
 });

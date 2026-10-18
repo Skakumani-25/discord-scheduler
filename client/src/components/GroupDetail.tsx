@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import GroupEvents, { type EventPrefill } from "./GroupEvents";
 import MeetingChannels, { type MeetingChannel } from "./MeetingChannels";
+import AnnouncementChannel from "./AnnouncementChannel";
+import StatusBadge from "./StatusBadge";
+import type { UserStatus } from "../status";
+import { formatDateTime, useTimezone } from "../time";
 
 const CATEGORIES = ["ALL", "GAMING", "STUDYING", "TALKING", "MOVIE", "OTHER"];
 
 type Member = {
   userId: string;
-  user: { username: string };
+  user: { username: string; status: UserStatus };
 };
 type Block = {
   id: string;
@@ -22,6 +26,7 @@ export type GroupDetailData = {
   inviteCode: string;
   type: "CUSTOM" | "DISCORD_SERVER";
   discordGuildId: string | null;
+  announcementChannelId: string | null;
   role: "OWNER" | "MEMBER";
   members: Member[];
   blocks: Block[];
@@ -42,6 +47,7 @@ function formatDuration(ms: number) {
 
 export default function GroupDetail({ group }: { group: GroupDetailData }) {
   const [filter, setFilter] = useState("ALL");
+  const tz = useTimezone();
 
   const [overlapCategory, setOverlapCategory] = useState("ALL");
   const [minMinutes, setMinMinutes] = useState("30");
@@ -118,6 +124,10 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
         {isServerGroup && <small> (Discord server)</small>}
       </h3>
 
+      {isServerGroup && group.role === "OWNER" && (
+        <AnnouncementChannel groupId={group.id} current={group.announcementChannelId} />
+      )}
+
       {meeting?.canManage && (
         <MeetingChannels groupId={group.id} channels={meeting.channels} onChange={reloadMeeting} />
       )}
@@ -154,6 +164,7 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
                 onChange={() => toggleMember(m.userId)}
               />{" "}
               {m.user.username}
+              <StatusBadge status={m.user.status} compact />
             </label>
           ))}
         </div>
@@ -166,7 +177,7 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
           <ul>
             {windows.map((w) => (
               <li key={w.startsAt}>
-                {new Date(w.startsAt).toLocaleString()} to {new Date(w.endsAt).toLocaleString()} (
+                {formatDateTime(w.startsAt, tz)} to {formatDateTime(w.endsAt, tz)} (
                 {formatDuration(new Date(w.endsAt).getTime() - new Date(w.startsAt).getTime())}){" "}
                 <button onClick={() => prefillFromWindow(w)}>Create event</button>
               </li>
@@ -197,12 +208,12 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
         return (
           <div key={m.userId} style={{ marginTop: 12 }}>
             <strong>{m.user.username}</strong>
-            {memberBlocks.length === 0 && <div>No availability listed</div>}
+            <StatusBadge status={m.user.status} />
+            {memberBlocks.length === 0 && <div>No time blocks listed</div>}
             <ul>
               {memberBlocks.map((b) => (
                 <li key={b.id}>
-                  {b.category}: {new Date(b.startsAt).toLocaleString()} to{" "}
-                  {new Date(b.endsAt).toLocaleString()}
+                  {b.category}: {formatDateTime(b.startsAt, tz)} to {formatDateTime(b.endsAt, tz)}
                   {b.note && ` (${b.note})`}
                 </li>
               ))}

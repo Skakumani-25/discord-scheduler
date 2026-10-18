@@ -5,11 +5,15 @@ import type { AddressInfo } from "node:net";
 
 const prismaMock = vi.hoisted(() => ({
   groupMember: { findUnique: vi.fn() },
-  event: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
+  event: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), delete: vi.fn(), update: vi.fn() },
   eventRsvp: { upsert: vi.fn() },
   meetingChannel: { findUnique: vi.fn() },
 }));
 vi.mock("../db", () => ({ prisma: prismaMock }));
+const reminderSync = vi.hoisted(() => ({ syncReminder: vi.fn(), recomputeEventReminders: vi.fn() }));
+vi.mock("../services/reminderSync", () => reminderSync);
+const announceEvent = vi.hoisted(() => vi.fn());
+vi.mock("../bot/announcements", () => ({ announceEvent }));
 
 import eventsRouter from "./events";
 
@@ -58,7 +62,9 @@ beforeEach(() => {
     }
   );
   prismaMock.event.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-    where.id === EVENT ? { id: EVENT, groupId: GROUP, creatorId: ALICE } : null
+    where.id === EVENT
+      ? { id: EVENT, groupId: GROUP, creatorId: ALICE, startsAt: new Date(future(24)), endsAt: new Date(future(26)) }
+      : null
   );
 });
 
@@ -97,6 +103,12 @@ describe("authorization: non-members get 404", () => {
     expect(prismaMock.eventRsvp.upsert).not.toHaveBeenCalled();
   });
 
+  it("PATCH /events/:id", async () => {
+    const res = await call("PATCH", `/events/${EVENT}`, MALLORY, { startsAt: future(48) });
+    expect(res.status).toBe(404);
+    expect(prismaMock.event.update).not.toHaveBeenCalled();
+  });
+
   it("DELETE /events/:id", async () => {
     const res = await call("DELETE", `/events/${EVENT}`, MALLORY);
     expect(res.status).toBe(404);
@@ -122,6 +134,12 @@ describe("PUT /events/:id/rsvp", () => {
       update: { status: "MAYBE" },
       create: { eventId: EVENT, userId: BOB, status: "MAYBE" },
     });
+  });
+
+  it("syncs the user's reminder after every RSVP change", async () => {
+    prismaMock.eventRsvp.upsert.mockResolvedValue({ eventId: EVENT, userId: BOB, status: "NOT_GOING" });
+    await call("PUT", `/events/${EVENT}/rsvp`, BOB, { status: "NOT_GOING" });
+    expect(reminderSync.syncReminder).toHaveBeenCalledWith(EVENT, BOB);
   });
 
   it("changing an RSVP reuses the same upsert key", async () => {
@@ -167,6 +185,9 @@ describe("POST /groups/:id/events", () => {
     const data = prismaMock.event.create.mock.calls[0][0].data;
     expect(data.rsvps).toEqual({ create: { userId: ALICE, status: "GOING" } });
     expect(data.creatorId).toBe(ALICE);
+    // Creator's GOING reminder is scheduled and the event is announced
+    expect(reminderSync.syncReminder).toHaveBeenCalledWith(EVENT, ALICE);
+    expect(announceEvent).toHaveBeenCalledWith(EVENT);
     const json = await res.json();
     expect(json.myStatus).toBe("GOING");
     expect(json.counts).toEqual({ GOING: 1, MAYBE: 0, NOT_GOING: 0 });
@@ -207,6 +228,52 @@ describe("POST /groups/:id/events", () => {
     const res = await call("POST", `/groups/${GROUP}/events`, ALICE, { ...validEvent(), ...override });
     expect(res.status).toBe(400);
     expect(prismaMock.event.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /events/:id", () => {
+  beforeEach(() => {
+    prismaMock.event.update.mockImplementation(async ({ data }) => ({
+      id: EVENT,
+      groupId: GROUP,
+      creatorId: ALICE,
+      title: "Raid night",
+      category: "GAMING",
+      description: null,
+      voiceChannelId: null,
+      creator: { id: ALICE, username: "Alice" },
+      rsvps: [],
+      ...data,
+    }));
+  });
+
+  it("lets the creator move the event and recomputes reminders", async () => {
+    const res = await call("PATCH", `/events/${EVENT}`, ALICE, { startsAt: future(48), endsAt: future(50) });
+    expect(res.status).toBe(200);
+    expect(reminderSync.recomputeEventReminders).toHaveBeenCalledWith(EVENT);
+  });
+
+  it("lets the group owner move the event", async () => {
+    expect((await call("PATCH", `/events/${EVENT}`, OWEN, { startsAt: future(25) })).status).toBe(200);
+  });
+
+  it("does not recompute when only the end time changes", async () => {
+    expect((await call("PATCH", `/events/${EVENT}`, ALICE, { endsAt: future(30) })).status).toBe(200);
+    expect(reminderSync.recomputeEventReminders).not.toHaveBeenCalled();
+  });
+
+  it("forbids other members", async () => {
+    expect((await call("PATCH", `/events/${EVENT}`, BOB, { startsAt: future(48) })).status).toBe(403);
+    expect(prismaMock.event.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["start in the past", { startsAt: future(-1) }],
+    ["end before start", { endsAt: future(23) }],
+    ["no fields", {}],
+  ])("rejects %s", async (_label, body) => {
+    expect((await call("PATCH", `/events/${EVENT}`, ALICE, body)).status).toBe(400);
+    expect(prismaMock.event.update).not.toHaveBeenCalled();
   });
 });
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDateTime, useTimezone, zonedInputToIso, inputZoneLabel } from "./time";
 
 const CATEGORIES = ["GAMING", "STUDYING", "TALKING", "MOVIE", "OTHER"];
 
@@ -17,6 +18,7 @@ export default function Availability() {
   const [end, setEnd] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const tz = useTimezone();
 
   async function load() {
     const res = await fetch("/api/availability");
@@ -34,8 +36,8 @@ export default function Availability() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         category,
-        startsAt: start ? new Date(start).toISOString() : "",
-        endsAt: end ? new Date(end).toISOString() : "",
+        startsAt: zonedInputToIso(start, tz),
+        endsAt: zonedInputToIso(end, tz),
         note,
       }),
     });
@@ -65,6 +67,7 @@ export default function Availability() {
         </select>
         <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
         <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+        <span>{inputZoneLabel(start || end, tz)}</span>
         <input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
         <button onClick={add}>Add</button>
       </div>
@@ -74,7 +77,7 @@ export default function Availability() {
         {blocks.map((b) => (
           <li key={b.id}>
             <strong>{b.category}</strong>{" "}
-            {new Date(b.startsAt).toLocaleString()} to {new Date(b.endsAt).toLocaleString()}
+            {formatDateTime(b.startsAt, tz)} to {formatDateTime(b.endsAt, tz)}
             {b.note && ` (${b.note})`}{" "}
             <button onClick={() => remove(b.id)}>Delete</button>
           </li>

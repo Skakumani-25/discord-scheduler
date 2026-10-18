@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { MeetingChannel } from "./MeetingChannels";
+import { formatDateTime, isoToZonedInput, useTimezone, zonedInputToIso, inputZoneLabel } from "../time";
 
 const CATEGORIES = ["GAMING", "STUDYING", "TALKING", "MOVIE", "OTHER"];
 
@@ -31,15 +32,6 @@ const RSVP_BUTTONS: { status: RsvpStatus; label: string }[] = [
   { status: "NOT_GOING", label: "Can't go" },
 ];
 
-// ISO -> value for <input type="datetime-local"> in the browser's timezone
-function toLocalInput(iso: string, roundUp: boolean) {
-  const minute = 60_000;
-  const ms = new Date(iso).getTime();
-  const rounded = roundUp ? Math.ceil(ms / minute) * minute : Math.floor(ms / minute) * minute;
-  const d = new Date(rounded);
-  return new Date(rounded - d.getTimezoneOffset() * minute).toISOString().slice(0, 16);
-}
-
 function CreateEventForm({
   groupId,
   prefill,
@@ -51,11 +43,12 @@ function CreateEventForm({
   meetingChannels: MeetingChannel[] | null;
   onCreated: () => void;
 }) {
+  const tz = useTimezone();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState(prefill?.category ?? "GAMING");
   // Round the start up so a window clipped to "now" doesn't land in the past
-  const [start, setStart] = useState(prefill ? toLocalInput(prefill.startsAt, true) : "");
-  const [end, setEnd] = useState(prefill ? toLocalInput(prefill.endsAt, false) : "");
+  const [start, setStart] = useState(prefill ? isoToZonedInput(prefill.startsAt, tz, "up") : "");
+  const [end, setEnd] = useState(prefill ? isoToZonedInput(prefill.endsAt, tz, "down") : "");
   const [description, setDescription] = useState("");
   const [voiceChannelId, setVoiceChannelId] = useState("");
   const [error, setError] = useState("");
@@ -68,8 +61,8 @@ function CreateEventForm({
       body: JSON.stringify({
         title,
         category,
-        startsAt: start ? new Date(start).toISOString() : "",
-        endsAt: end ? new Date(end).toISOString() : "",
+        startsAt: zonedInputToIso(start, tz),
+        endsAt: zonedInputToIso(end, tz),
         description,
         voiceChannelId: voiceChannelId || undefined,
       }),
@@ -97,6 +90,7 @@ function CreateEventForm({
         </select>
         <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
         <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+        <span>{inputZoneLabel(start || end, tz)}</span>
         <input
           placeholder="Description (optional)"
           value={description}
@@ -129,6 +123,7 @@ export default function GroupEvents({
   // null for custom groups, which have no voice channels
   meetingChannels: MeetingChannel[] | null;
 }) {
+  const tz = useTimezone();
   const [events, setEvents] = useState<GroupEvent[]>([]);
   const [error, setError] = useState("");
 
@@ -172,7 +167,7 @@ export default function GroupEvents({
           <li key={ev.id} style={{ marginBottom: 8 }}>
             <strong>{ev.title}</strong> ({ev.category})
             <div>
-              {new Date(ev.startsAt).toLocaleString()} to {new Date(ev.endsAt).toLocaleString()}
+              {formatDateTime(ev.startsAt, tz)} to {formatDateTime(ev.endsAt, tz)}
             </div>
             {ev.voiceChannelId && (
               <div>
