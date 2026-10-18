@@ -4,8 +4,24 @@ import { Category } from "@prisma/client";
 import { prisma } from "../db";
 import { findOverlaps } from "../services/overlap";
 import { statusSelect, withEffectiveStatus } from "../services/userStatus";
+import { getPresence, type Presence } from "../bot/presence";
 
 const router = Router();
+
+type PresenceMember = { userId: string; user: { discordId: string; showPresence: boolean } };
+
+// userId -> live presence, or null for members who hide it. Callers must already have
+// checked that the viewer is in the group, so presence only reaches co-members.
+function memberPresence(members: PresenceMember[], guildId: string | null) {
+  const visible = members.filter((m) => m.user.showPresence);
+  const live = getPresence(
+    visible.map((m) => m.user.discordId),
+    { preferGuildId: guildId }
+  );
+  const out: Record<string, Presence | null> = {};
+  for (const m of members) out[m.userId] = m.user.showPresence ? live.get(m.user.discordId)! : null;
+  return out;
+}
 
 // One week
 const MAX_MIN_MINUTES = 7 * 24 * 60;
@@ -83,7 +99,14 @@ router.get("/:id", async (req, res) => {
       members: {
         include: {
           user: {
-            select: { id: true, username: true, avatar: true, discordId: true, ...statusSelect },
+            select: {
+              id: true,
+              username: true,
+              avatar: true,
+              discordId: true,
+              showPresence: true,
+              ...statusSelect,
+            },
           },
         },
       },
@@ -94,6 +117,7 @@ router.get("/:id", async (req, res) => {
     return;
   }
   const now = new Date();
+  const presence = memberPresence(group.members, group.discordGuildId);
   const blocks = await prisma.availabilityBlock.findMany({
     where: {
       userId: { in: group.members.map((m) => m.userId) },
@@ -109,10 +133,36 @@ router.get("/:id", async (req, res) => {
     discordGuildId: group.discordGuildId,
     announcementChannelId: group.announcementChannelId,
     role: membership.role,
-    // Each member's user.status is their current status, or null if unset/expired
-    members: group.members.map((m) => ({ ...m, user: withEffectiveStatus(m.user, now) })),
+    // user.status: their current status, or null if unset/expired
+    // user.presence: live Discord presence, or null if they hide it
+    members: group.members.map(({ user: { showPresence: _hidden, ...user }, ...m }) => ({
+      ...m,
+      user: { ...withEffectiveStatus(user, now), presence: presence[m.userId] },
+    })),
     blocks,
   });
+});
+
+// Just the live presence map { userId: presence | null }, for polling (members only)
+router.get("/:id/presence", async (req, res) => {
+  const membership = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: req.params.id, userId: res.locals.userId } },
+    include: {
+      group: {
+        select: {
+          discordGuildId: true,
+          members: {
+            select: { userId: true, user: { select: { discordId: true, showPresence: true } } },
+          },
+        },
+      },
+    },
+  });
+  if (!membership) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.json(memberPresence(membership.group.members, membership.group.discordGuildId));
 });
 
 // Shared free windows across members (members only)

@@ -3,14 +3,16 @@ import GroupEvents, { type EventPrefill } from "./GroupEvents";
 import MeetingChannels, { type MeetingChannel } from "./MeetingChannels";
 import AnnouncementChannel from "./AnnouncementChannel";
 import StatusBadge from "./StatusBadge";
-import type { UserStatus } from "../status";
+import type { Presence, UserStatus } from "../status";
+import { PresenceDot, PresenceLegend } from "./PresenceDot";
 import { formatDateTime, useTimezone } from "../time";
+import GroupCalendar from "./GroupCalendar";
 
 const CATEGORIES = ["ALL", "GAMING", "STUDYING", "TALKING", "MOVIE", "OTHER"];
 
 type Member = {
   userId: string;
-  user: { username: string; status: UserStatus };
+  user: { username: string; status: UserStatus; presence: Presence | null };
 };
 type Block = {
   id: string;
@@ -65,6 +67,31 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
   useEffect(() => {
     if (isServerGroup) fetchMeetingInfo(group.id).then(setMeeting);
   }, [group.id, isServerGroup]);
+
+  // Refreshed every 60s while open (skipped while the tab is hidden); reopening the
+  // group remounts this view with fresh data from GET /api/groups/:id
+  const [polledPresence, setPolledPresence] = useState<Record<string, Presence | null> | null>(null);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      fetch(`/api/groups/${group.id}/presence`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => data && setPolledPresence(data));
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, [group.id]);
+  const presenceOf = (m: Member) =>
+    polledPresence && m.userId in polledPresence ? polledPresence[m.userId] : m.user.presence;
+  const anyPresence = group.members.some((m) => presenceOf(m) !== null);
+
+  // Load shared free time for everyone up front so the calendar can outline it; the
+  // finder above re-runs it with other settings
+  useEffect(() => {
+    const params = new URLSearchParams({ category: "ALL", minMinutes: "30" });
+    fetch(`/api/groups/${group.id}/overlaps?${params}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => data && setWindows(data));
+  }, [group.id]);
 
   async function reloadMeeting() {
     setMeeting(await fetchMeetingInfo(group.id));
@@ -163,6 +190,7 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
                 checked={checked.has(m.userId)}
                 onChange={() => toggleMember(m.userId)}
               />{" "}
+              <PresenceDot presence={presenceOf(m)} />
               {m.user.username}
               <StatusBadge status={m.user.status} compact />
             </label>
@@ -193,6 +221,7 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
       />
 
       <h4>Member availability</h4>
+      {anyPresence && <PresenceLegend />}
       <label>
         Category:{" "}
         <select value={filter} onChange={(e) => setFilter(e.target.value)}>
@@ -201,12 +230,19 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
           ))}
         </select>
       </label>
+      <GroupCalendar
+        members={group.members}
+        blocks={group.blocks.filter((b) => filter === "ALL" || b.category === filter)}
+        windows={windows ?? []}
+        onWindowClick={prefillFromWindow}
+      />
       {group.members.map((m) => {
         const memberBlocks = group.blocks.filter(
           (b) => b.userId === m.userId && (filter === "ALL" || b.category === filter)
         );
         return (
           <div key={m.userId} style={{ marginTop: 12 }}>
+            <PresenceDot presence={presenceOf(m)} />
             <strong>{m.user.username}</strong>
             <StatusBadge status={m.user.status} />
             {memberBlocks.length === 0 && <div>No time blocks listed</div>}

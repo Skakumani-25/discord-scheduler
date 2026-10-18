@@ -109,3 +109,10 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+.app {
+  padding: 24px;
+  @media (max-width: 600px) {
+    padding: 12px;
+  }
+}

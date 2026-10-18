@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { browserTimeZone, listTimeZones } from "./time";
+import { browserTimeZone, listTimeZones } from "../time";
 
-export type UserSettings = { timezone: string; reminderMinutes: number };
+export type UserSettings = { timezone: string; reminderMinutes: number; showPresence: boolean };
 
 const LEAD_TIMES = [0, 5, 10, 15, 30, 60, 120, 1440];
 
@@ -24,24 +24,32 @@ export default function Settings({
   // "UTC" is the account default, so suggest the browser's zone until the user picks one
   const [timezone, setTimezone] = useState(settings.timezone === "UTC" ? browserTz : settings.timezone);
   const [reminderMinutes, setReminderMinutes] = useState(settings.reminderMinutes);
+  const [showPresence, setShowPresence] = useState(settings.showPresence);
   const [status, setStatus] = useState("");
 
   const leadTimes = LEAD_TIMES.includes(reminderMinutes) ? LEAD_TIMES : [...LEAD_TIMES, reminderMinutes].sort((a, b) => a - b);
-  const dirty = timezone !== settings.timezone || reminderMinutes !== settings.reminderMinutes;
+  const dirty =
+    timezone !== settings.timezone ||
+    reminderMinutes !== settings.reminderMinutes ||
+    showPresence !== settings.showPresence;
 
   async function save() {
     setStatus("");
     const res = await fetch("/api/me/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ timezone, reminderMinutes }),
+      body: JSON.stringify({ timezone, reminderMinutes, showPresence }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       setStatus(body.error ?? "Could not save settings");
       return;
     }
-    onSaved({ timezone: body.timezone, reminderMinutes: body.reminderMinutes });
+    onSaved({
+      timezone: body.timezone,
+      reminderMinutes: body.reminderMinutes,
+      showPresence: body.showPresence,
+    });
     setStatus("Saved");
   }
 
@@ -69,6 +77,14 @@ export default function Settings({
               </option>
             ))}
           </select>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={showPresence}
+            onChange={(e) => setShowPresence(e.target.checked)}
+          />{" "}
+          Show my Discord status to my groups
         </label>
         <button onClick={save} disabled={!dirty}>
           Save

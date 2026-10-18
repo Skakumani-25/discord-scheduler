@@ -24,6 +24,9 @@ vi.mock("../db", () => ({ prisma: prismaMock }));
 const botState = vi.hoisted(() => ({ bot: null as unknown }));
 vi.mock("../bot/client", () => ({ getBot: () => botState.bot }));
 
+const getPresence = vi.hoisted(() => vi.fn());
+vi.mock("../bot/presence", () => ({ getPresence }));
+
 const fetchUserGuilds = vi.hoisted(() => vi.fn());
 vi.mock("../services/discordApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/discordApi")>()),
@@ -134,6 +137,7 @@ beforeEach(() => {
   prismaMock.group.findUnique.mockResolvedValue(null);
   prismaMock.group.findMany.mockResolvedValue([]);
   prismaMock.meetingChannel.findMany.mockResolvedValue([]);
+  getPresence.mockImplementation((ids: string[]) => new Map(ids.map((id) => [id, "online"])));
 });
 
 function call(method: string, path: string, user: string, body?: unknown) {
@@ -441,7 +445,14 @@ describe("announcement channel", () => {
 
 describe("GET /api/groups/:id member statuses", () => {
   it("shows each member's current status and hides expired ones and raw columns", async () => {
-    const user = (id: string, extra: object) => ({ id, username: id, avatar: null, discordId: discordId(id), ...extra });
+    const user = (id: string, extra: object) => ({
+      id,
+      username: id,
+      avatar: null,
+      discordId: discordId(id),
+      showPresence: true,
+      ...extra,
+    });
     prismaMock.group.findUnique.mockResolvedValue({
       ...groups[SERVER_GROUP],
       inviteCode: "ABCD1234",
@@ -463,5 +474,69 @@ describe("GET /api/groups/:id member statuses", () => {
       [MANAGER]: null,
     });
     expect(body.members[0].user).not.toHaveProperty("statusNote");
+  });
+});
+
+describe("member presence", () => {
+  const member = (id: string, showPresence: boolean) => ({
+    userId: id,
+    user: {
+      id,
+      username: id,
+      avatar: null,
+      discordId: discordId(id),
+      showPresence,
+      status: null,
+      statusNote: null,
+      statusExpiresAt: null,
+    },
+  });
+
+  beforeEach(() => {
+    prismaMock.group.findUnique.mockResolvedValue({
+      ...groups[SERVER_GROUP],
+      inviteCode: "ABCD1234",
+      announcementChannelId: null,
+      members: [member(OWNER, true), member(MEMBER, false), member(MANAGER, true)],
+    });
+    prismaMock.availabilityBlock.findMany.mockResolvedValue([]);
+    getPresence.mockReturnValue(
+      new Map([
+        [discordId(OWNER), "idle"],
+        [discordId(MANAGER), "unknown"],
+      ])
+    );
+  });
+
+  it("includes presence in group detail and hides it for members who opted out", async () => {
+    const body = await (await call("GET", `/api/groups/${SERVER_GROUP}`, MEMBER)).json();
+    const presence = Object.fromEntries(
+      body.members.map((m: { userId: string; user: { presence: unknown } }) => [m.userId, m.user.presence])
+    );
+    expect(presence).toEqual({ [OWNER]: "idle", [MEMBER]: null, [MANAGER]: "unknown" });
+    // Opted-out members are never even looked up, and the setting itself isn't exposed
+    expect(getPresence).toHaveBeenCalledWith([discordId(OWNER), discordId(MANAGER)], { preferGuildId: GUILD });
+    expect(body.members[0].user).not.toHaveProperty("showPresence");
+  });
+
+  it("serves a presence-only map for polling", async () => {
+    prismaMock.groupMember.findUnique.mockResolvedValue({
+      role: "MEMBER",
+      group: {
+        discordGuildId: GUILD,
+        members: [member(OWNER, true), member(MEMBER, false), member(MANAGER, true)].map((m) => ({
+          userId: m.userId,
+          user: { discordId: m.user.discordId, showPresence: m.user.showPresence },
+        })),
+      },
+    });
+    const res = await call("GET", `/api/groups/${SERVER_GROUP}/presence`, MEMBER);
+    expect(await res.json()).toEqual({ [OWNER]: "idle", [MEMBER]: null, [MANAGER]: "unknown" });
+  });
+
+  it("does not reveal presence to non-members", async () => {
+    expect((await call("GET", `/api/groups/${SERVER_GROUP}/presence`, OUTSIDER)).status).toBe(404);
+    expect((await call("GET", `/api/groups/${SERVER_GROUP}`, OUTSIDER)).status).toBe(404);
+    expect(getPresence).not.toHaveBeenCalled();
   });
 });

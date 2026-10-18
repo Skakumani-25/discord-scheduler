@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import GroupDetail, { type GroupDetailData } from "./components/GroupDetail";
-import DiscordServers from "./components/DiscordServers";
+import GroupDetail, { type GroupDetailData } from "./GroupDetail";
+import DiscordServers from "./DiscordServers";
 
 type GroupSummary = {
   id: string;
@@ -17,6 +17,8 @@ export default function Groups() {
   const [newName, setNewName] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  // Bumped on every open so reopening a group remounts it with fresh data
+  const [openCount, setOpenCount] = useState(0);
 
   async function loadGroups() {
     const res = await fetch("/api/groups");
@@ -29,7 +31,9 @@ export default function Groups() {
 
   async function open(id: string) {
     const res = await fetch(`/api/groups/${id}`);
-    if (res.ok) setSelected(await res.json());
+    if (!res.ok) return;
+    setSelected(await res.json());
+    setOpenCount((n) => n + 1);
   }
 
   async function create() {
@@ -97,7 +101,7 @@ export default function Groups() {
         }}
       />
 
-      {selected && <GroupDetail key={selected.id} group={selected} />}
+      {selected && <GroupDetail key={`${selected.id}:${openCount}`} group={selected} />}
     </div>
   );
 }

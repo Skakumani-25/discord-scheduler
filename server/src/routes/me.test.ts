@@ -82,6 +82,16 @@ describe("PUT /api/me/settings", () => {
     expect(recomputeUserReminders).not.toHaveBeenCalled();
   });
 
+  it("saves the show-presence setting", async () => {
+    expect((await put({ showPresence: false })).status).toBe(200);
+    expect(prismaMock.user.update).toHaveBeenCalledWith({ where: { id: "u1" }, data: { showPresence: false } });
+  });
+
+  it.each([["yes"], [1], [null]])("rejects showPresence %j", async (showPresence) => {
+    expect((await put({ showPresence })).status).toBe(400);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
   it("rejects an empty update", async () => {
     expect((await put({})).status).toBe(400);
   });

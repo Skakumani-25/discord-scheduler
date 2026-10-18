@@ -12,8 +12,8 @@ const MAX_REMINDER_MINUTES = 7 * 24 * 60;
 // Update my timezone and/or reminder lead time
 router.put("/settings", async (req, res) => {
   const userId = res.locals.userId;
-  const { timezone, reminderMinutes } = req.body ?? {};
-  if (timezone === undefined && reminderMinutes === undefined) {
+  const { timezone, reminderMinutes, showPresence } = req.body ?? {};
+  if (timezone === undefined && reminderMinutes === undefined && showPresence === undefined) {
     res.status(400).json({ error: "Nothing to update" });
     return;
   }
@@ -31,6 +31,11 @@ router.put("/settings", async (req, res) => {
     return;
   }
 
+  if (showPresence !== undefined && typeof showPresence !== "boolean") {
+    res.status(400).json({ error: "showPresence must be true or false" });
+    return;
+  }
+
   const before = await prisma.user.findUnique({
     where: { id: userId },
     select: { reminderMinutes: true },
@@ -44,6 +49,7 @@ router.put("/settings", async (req, res) => {
     data: {
       ...(timezone !== undefined && { timezone }),
       ...(reminderMinutes !== undefined && { reminderMinutes }),
+      ...(showPresence !== undefined && { showPresence }),
     },
   });
   if (reminderMinutes !== undefined && reminderMinutes !== before.reminderMinutes) {

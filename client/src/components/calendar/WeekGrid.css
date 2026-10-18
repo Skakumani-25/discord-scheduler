@@ -1,0 +1,205 @@
+.wg {
+  --row-h: 28px;
+  --gutter: 48px;
+  --min-col: 38px;
+  font-size: 13px;
+  text-align: left;
+}
+.wg-scroll {
+  max-height: 65vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overscroll-behavior: contain;
+}
+.wg-header,
+.wg-body {
+  display: grid;
+  grid-template-columns: var(--gutter) repeat(7, minmax(var(--min-col), 1fr));
+  min-width: calc(var(--gutter) + 7 * var(--min-col));
+}
+.wg-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.wg-dayhead {
+  text-align: center;
+  padding: 6px 0;
+  color: var(--text-h);
+  white-space: nowrap;
+}
+.wg-dayhead.today {
+  color: var(--accent);
+  font-weight: 600;
+}
+.wg-dayhead .short {
+  display: none;
+}
+.wg-hour-label {
+  height: var(--row-h);
+  box-sizing: border-box;
+  padding-right: 6px;
+  text-align: right;
+  font-size: 11px;
+  line-height: 1;
+  transform: translateY(-0.5em);
+  white-space: nowrap;
+}
+.wg-day {
+  position: relative;
+  border-left: 1px solid var(--border);
+}
+.wg-day.today {
+  background: var(--accent-bg);
+}
+.wg-cell {
+  height: var(--row-h);
+  box-sizing: border-box;
+  border-top: 1px solid var(--border);
+}
+.wg.editable .wg-cell {
+  cursor: crosshair;
+}
+.wg-cell.selected {
+  background: rgba(88, 101, 242, 0.35);
+}
+.wg-cell.pending {
+  outline: 2px solid #5865f2;
+  outline-offset: -2px;
+}
+.wg-block {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 4px;
+  padding: 1px 3px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.2;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  z-index: 1;
+}
+.wg.editable .wg-block {
+  cursor: pointer;
+}
+.wg-block:focus-visible {
+  outline: 2px solid var(--accent);
+  z-index: 3;
+}
+.wg-highlight {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  background: rgba(0, 168, 252, 0.18);
+  border: 2px dashed #00a8fc;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.wg-highlight.clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.wg-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.wg-toolbar .wg-week {
+  font-weight: 600;
+  color: var(--text-h);
+  margin-left: 4px;
+}
+.wg-legend {
+  display: flex;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  margin: 6px 0;
+  text-align: left;
+}
+.wg-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+.wg-hint {
+  font-size: 13px;
+  margin: 4px 0;
+  text-align: left;
+}
+
+.popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+}
+.popover {
+  position: fixed;
+  z-index: 50;
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 12px;
+  text-align: left;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.popover label {
+  display: block;
+  margin: 6px 0;
+}
+.popover .row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.popover .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+/* Phone widths: tighter grid, short day names, popover becomes a bottom sheet */
+@media (max-width: 600px) {
+  .wg {
+    --row-h: 26px;
+    --gutter: 36px;
+    --min-col: 36px;
+    font-size: 12px;
+  }
+  .wg-dayhead .long {
+    display: none;
+  }
+  .wg-dayhead .short {
+    display: inline;
+  }
+  .wg-block-label {
+    display: none;
+  }
+  .popover {
+    left: 0 !important;
+    right: 0;
+    top: auto !important;
+    bottom: 0;
+    width: 100%;
+    max-height: 80vh;
+    border-radius: 12px 12px 0 0;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import StatusBadge from "./components/StatusBadge";
-import { STATUS_OPTIONS, type StatusValue, type UserStatus } from "./status";
-import { isoToZonedInput, useTimezone, zonedInputToIso } from "./time";
+import StatusBadge from "./StatusBadge";
+import { STATUS_OPTIONS, type StatusValue, type UserStatus } from "../status";
+import { isoToZonedInput, useTimezone, zonedInputToIso } from "../time";
 
 const EXPIRY_OPTIONS = [
   { value: "never", label: "Don't clear" },

@@ -26,6 +26,8 @@ model User {
   status          UserStatus?
   statusNote      String?
   statusExpiresAt DateTime?
+  // Show my live Discord presence (online/idle/dnd/offline) to people in my groups
+  showPresence    Boolean  @default(true)
   // AES-256-GCM encrypted; omitted from queries by default (see src/db.ts)
   discordAccessToken    String?
   discordTokenExpiresAt DateTime?
