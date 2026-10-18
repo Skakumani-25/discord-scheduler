@@ -23,6 +23,8 @@ model User {
   updatedAt DateTime @updatedAt
   availability AvailabilityBlock[]
   memberships GroupMember[]
+  createdEvents Event[]
+  rsvps       EventRsvp[]
 }
 
 enum Category {
@@ -57,6 +59,7 @@ model Group {
   inviteCode String        @unique
   createdAt  DateTime      @default(now())
   members    GroupMember[]
+  events     Event[]
 }
 
 model GroupMember {
@@ -69,4 +72,39 @@ model GroupMember {
   joinedAt DateTime  @default(now())
 
   @@unique([groupId, userId])
+}
+
+enum RsvpStatus {
+  GOING
+  MAYBE
+  NOT_GOING
+}
+
+model Event {
+  id             String      @id @default(cuid())
+  groupId        String
+  group          Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  creatorId      String
+  creator        User        @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title          String
+  category       Category
+  startsAt       DateTime
+  endsAt         DateTime
+  description    String?
+  voiceChannelId String?
+  createdAt      DateTime    @default(now())
+  rsvps          EventRsvp[]
+
+  @@index([groupId, startsAt])
+}
+
+model EventRsvp {
+  id      String     @id @default(cuid())
+  eventId String
+  event   Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status  RsvpStatus
+
+  @@unique([eventId, userId])
 }

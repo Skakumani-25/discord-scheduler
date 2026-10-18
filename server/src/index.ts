@@ -7,6 +7,7 @@ import { requireAuth } from "./middleware/auth";
 import path from "node:path";
 import availabilityRouter from "./routes/availability";
 import groupsRouter from "./routes/groups";
+import eventsRouter from "./routes/events";
 
 const app = express();
 app.use(express.json());
@@ -41,6 +42,7 @@ app.post("/api/logout", (_req, res) => {
 
 app.use("/api/availability", requireAuth, availabilityRouter);
 app.use("/api/groups", requireAuth, groupsRouter);
+app.use("/api", requireAuth, eventsRouter);
 
 if (process.env.NODE_ENV === "production") {
   const clientDist = path.join(__dirname, "../../client/dist");

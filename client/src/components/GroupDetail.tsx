@@ -1,4 +1,5 @@
 import { useState } from "react";
+import GroupEvents, { type EventPrefill } from "./GroupEvents";
 
 const CATEGORIES = ["ALL", "GAMING", "STUDYING", "TALKING", "MOVIE", "OTHER"];
 
@@ -41,6 +42,20 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
   const [windows, setWindows] = useState<OverlapWindow[] | null>(null);
   const [overlapError, setOverlapError] = useState("");
   const [searching, setSearching] = useState(false);
+  const [prefill, setPrefill] = useState<EventPrefill | null>(null);
+
+  // Send an overlap window to the Create event form
+  function prefillFromWindow(w: OverlapWindow) {
+    setPrefill((prev) => ({
+      nonce: (prev?.nonce ?? 0) + 1,
+      startsAt: w.startsAt,
+      endsAt: w.endsAt,
+      category: overlapCategory === "ALL" ? undefined : overlapCategory,
+    }));
+    requestAnimationFrame(() =>
+      document.getElementById("create-event")?.scrollIntoView({ behavior: "smooth" })
+    );
+  }
 
   function toggleMember(userId: string) {
     setChecked((prev) => {
@@ -125,12 +140,15 @@ export default function GroupDetail({ group }: { group: GroupDetailData }) {
             {windows.map((w) => (
               <li key={w.startsAt}>
                 {new Date(w.startsAt).toLocaleString()} to {new Date(w.endsAt).toLocaleString()} (
-                {formatDuration(new Date(w.endsAt).getTime() - new Date(w.startsAt).getTime())})
+                {formatDuration(new Date(w.endsAt).getTime() - new Date(w.startsAt).getTime())}){" "}
+                <button onClick={() => prefillFromWindow(w)}>Create event</button>
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      <GroupEvents groupId={group.id} prefill={prefill} />
 
       <h4>Member availability</h4>
       <label>
