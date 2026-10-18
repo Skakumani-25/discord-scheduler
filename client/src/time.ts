@@ -98,3 +98,30 @@ export function zonedInputToIso(value: string, tz: string) {
   ms = wall - offsetMs(ms, tz);
   return new Date(ms).toISOString();
 }
+
+// "Sat, Oct 24" in tz
+export function formatDay(iso: string, tz: string) {
+  return new Date(iso).toLocaleDateString(undefined, {
+    timeZone: tz,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// "Sat, Oct 24 · 7:00 PM – 10:00 PM EDT", or both dates when it spans days
+export function formatRange(startIso: string, endIso: string, tz: string) {
+  const sameDay = isoToZonedInput(startIso, tz).slice(0, 10) === isoToZonedInput(endIso, tz).slice(0, 10);
+  const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { timeZone: tz, timeStyle: "short" });
+  return sameDay
+    ? `${formatDay(startIso, tz)} · ${time(startIso)} – ${time(endIso)} ${zoneAbbreviation(endIso, tz)}`
+    : `${formatDay(startIso, tz)} ${time(startIso)} – ${formatDay(endIso, tz)} ${time(endIso)} ${zoneAbbreviation(endIso, tz)}`;
+}
+
+// "1h 30m"
+export function formatDuration(ms: number) {
+  const totalMinutes = Math.round(ms / 60_000);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}

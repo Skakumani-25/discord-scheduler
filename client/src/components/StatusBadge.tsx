@@ -1,43 +1,46 @@
+import { statusOption, type UserStatus } from "../status";
 import { formatDateTime, formatTime, useTimezone } from "../time";
-import { STATUS_OPTIONS, type UserStatus } from "../status";
 
-function untilLabel(iso: string, tz: string) {
+function untilLabel(iso: string, tz: string, now: number) {
   // Times within a day read better without the date
-  const sameDay = new Date(iso).getTime() - Date.now() < 24 * 3_600_000;
-  return sameDay ? formatTime(iso, tz) : formatDateTime(iso, tz);
+  return new Date(iso).getTime() - now < 24 * 3_600_000 ? formatTime(iso, tz) : formatDateTime(iso, tz);
 }
 
-export default function StatusBadge({ status, compact = false }: { status: UserStatus; compact?: boolean }) {
+// A member's custom status: icon + label (+ note and expiry unless compact)
+export default function StatusBadge({
+  status,
+  compact = false,
+  now,
+}: {
+  status: UserStatus;
+  compact?: boolean;
+  // Current time, passed in so rendering stays pure
+  now?: number;
+}) {
   const tz = useTimezone();
   if (!status) return null;
-  const option = STATUS_OPTIONS.find((o) => o.value === status.status)!;
-  const dot = (
-    <span
-      aria-hidden
-      style={{
-        display: "inline-block",
-        width: 10,
-        height: 10,
-        borderRadius: "50%",
-        background: option.color,
-        marginRight: 4,
-        verticalAlign: "middle",
-      }}
-    />
-  );
+  const option = statusOption(status.status);
+  const Icon = option.icon;
+  const description = [option.label, status.note].filter(Boolean).join(": ");
+
   if (compact) {
     return (
-      <span title={[option.label, status.note].filter(Boolean).join(": ")} style={{ marginLeft: 4 }}>
-        {dot}
+      <span className={`status-label status-${status.status}`} title={description}>
+        <Icon size={14} aria-hidden />
+        <span className="visually-hidden">{description}</span>
       </span>
     );
   }
   return (
-    <span style={{ marginLeft: 8, fontWeight: "normal" }}>
-      {dot}
-      {option.label}
-      {status.note && <> · {status.note}</>}
-      {status.expiresAt && <small> (until {untilLabel(status.expiresAt, tz)})</small>}
+    <span className="status-label">
+      <span className={`status-label status-${status.status}`}>
+        <Icon size={14} aria-hidden />
+        {option.label}
+      </span>
+      {status.note && <span className="muted truncate">· {status.note}</span>}
+      {status.expiresAt && now !== undefined && (
+        <span className="subtle">until {untilLabel(status.expiresAt, tz, now)}</span>
+      )}
     </span>
   );
 }

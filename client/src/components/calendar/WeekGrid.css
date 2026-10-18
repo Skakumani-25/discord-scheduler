@@ -1,15 +1,16 @@
+/* Week calendar grid and its popover. Uses the global design tokens. */
 .wg {
   --row-h: 28px;
-  --gutter: 48px;
+  --gutter: 52px;
   --min-col: 38px;
-  font-size: 13px;
-  text-align: left;
+  font-size: var(--text-sm);
 }
 .wg-scroll {
-  max-height: 65vh;
+  max-height: min(65vh, 680px);
   overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
   overscroll-behavior: contain;
 }
 .wg-header,
@@ -22,27 +23,28 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
 }
 .wg-dayhead {
+  padding: var(--space-2) 0;
   text-align: center;
-  padding: 6px 0;
-  color: var(--text-h);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
   white-space: nowrap;
 }
 .wg-dayhead.today {
-  color: var(--accent);
-  font-weight: 600;
+  color: var(--color-accent-hover);
 }
 .wg-dayhead .short {
   display: none;
 }
 .wg-hour-label {
   height: var(--row-h);
-  box-sizing: border-box;
-  padding-right: 6px;
+  padding-right: var(--space-2);
   text-align: right;
+  color: var(--color-text-subtle);
   font-size: 11px;
   line-height: 1;
   transform: translateY(-0.5em);
@@ -50,42 +52,64 @@
 }
 .wg-day {
   position: relative;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--color-border);
 }
 .wg-day.today {
-  background: var(--accent-bg);
+  background: rgba(139, 124, 255, 0.05);
 }
 .wg-cell {
   height: var(--row-h);
-  box-sizing: border-box;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(56, 58, 75, 0.6);
+}
+.wg-cell:first-child {
+  border-top: 0;
 }
 .wg.editable .wg-cell {
   cursor: crosshair;
 }
-.wg-cell.selected {
-  background: rgba(88, 101, 242, 0.35);
+.wg.editable .wg-cell:hover {
+  background: rgba(139, 124, 255, 0.07);
+}
+.wg-cell.selected,
+.wg.editable .wg-cell.selected:hover {
+  background: rgba(139, 124, 255, 0.28);
 }
 .wg-cell.pending {
-  outline: 2px solid #5865f2;
+  outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
 .wg-block {
   position: absolute;
-  box-sizing: border-box;
-  border-radius: 4px;
-  padding: 1px 3px;
-  overflow: hidden;
-  font-size: 11px;
-  line-height: 1.2;
-  border: 1px solid rgba(0, 0, 0, 0.2);
   z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 2px 4px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  line-height: 1.25;
+  transition: filter var(--duration-fast) var(--ease-out);
+}
+.wg-block svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.wg-block-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .wg.editable .wg-block {
   cursor: pointer;
 }
+.wg.editable .wg-block:hover {
+  filter: brightness(1.08);
+}
 .wg-block:focus-visible {
-  outline: 2px solid var(--accent);
   z-index: 3;
 }
 .wg-highlight {
@@ -93,49 +117,49 @@
   left: 0;
   right: 0;
   z-index: 2;
-  box-sizing: border-box;
-  background: rgba(0, 168, 252, 0.18);
-  border: 2px dashed #00a8fc;
-  border-radius: 4px;
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: rgba(139, 124, 255, 0.16);
   pointer-events: none;
 }
 .wg-highlight.clickable {
   pointer-events: auto;
   cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.wg-highlight.clickable:hover {
+  background: rgba(139, 124, 255, 0.28);
 }
 .wg-toolbar {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
   align-items: center;
-  flex-wrap: wrap;
-  margin: 8px 0;
+  gap: var(--space-2);
 }
-.wg-toolbar .wg-week {
-  font-weight: 600;
-  color: var(--text-h);
-  margin-left: 4px;
-}
-.wg-legend {
-  display: flex;
-  gap: 4px 12px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  margin: 6px 0;
-  text-align: left;
+.wg-week {
+  margin-left: var(--space-2);
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
 }
 .wg-swatch {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  margin-right: 4px;
-  vertical-align: middle;
-  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.wg-swatch-overlap {
+  border: 2px dashed var(--color-accent);
+  background: rgba(139, 124, 255, 0.16);
 }
 .wg-hint {
-  font-size: 13px;
-  margin: 4px 0;
-  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
 .popover-backdrop {
@@ -146,42 +170,32 @@
 .popover {
   position: fixed;
   z-index: 50;
-  box-sizing: border-box;
-  width: min(340px, calc(100vw - 24px));
+  width: min(360px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
   overflow: auto;
-  padding: 12px;
-  text-align: left;
-  color: var(--text-h);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-lg);
+  animation: popover-in var(--duration-normal) var(--ease-out);
 }
-.popover label {
-  display: block;
-  margin: 6px 0;
+.popover-title {
+  font-size: var(--text-md);
 }
-.popover .row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.popover .actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 10px;
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
 /* Phone widths: tighter grid, short day names, popover becomes a bottom sheet */
 @media (max-width: 600px) {
   .wg {
-    --row-h: 26px;
-    --gutter: 36px;
+    --row-h: 28px;
+    --gutter: 38px;
     --min-col: 36px;
-    font-size: 12px;
   }
   .wg-dayhead .long {
     display: none;
@@ -189,8 +203,16 @@
   .wg-dayhead .short {
     display: inline;
   }
+  .wg-block {
+    justify-content: center;
+    padding: 2px 0;
+  }
   .wg-block-label {
     display: none;
+  }
+  .wg-week {
+    width: 100%;
+    margin-left: 0;
   }
   .popover {
     left: 0 !important;
@@ -198,8 +220,12 @@
     top: auto !important;
     bottom: 0;
     width: 100%;
-    max-height: 80vh;
-    border-radius: 12px 12px 0 0;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    max-height: 85vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
   }
+}
+.wg-hint-pending {
+  margin-bottom: var(--space-2);
+  color: var(--color-accent-hover);
 }

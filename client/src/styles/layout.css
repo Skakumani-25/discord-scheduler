@@ -1,0 +1,215 @@
+/* App shell: sidebar on desktop, top bar + bottom tab bar on narrow screens */
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 100vh;
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  height: 100vh;
+  padding: var(--space-5) var(--space-3);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 38px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.nav-link:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  text-decoration: none;
+}
+.nav-link[aria-current="page"] {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+.nav-link[aria-current="page"] svg {
+  color: var(--color-accent);
+}
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding: var(--space-3) var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+  min-width: 0;
+}
+.sidebar-user {
+  color: inherit;
+  border-radius: var(--radius-md);
+}
+.sidebar-user:hover {
+  text-decoration: none;
+  color: inherit;
+}
+.sidebar-user:hover .sidebar-user-name {
+  color: var(--color-accent-hover);
+}
+.sidebar-user-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sidebar-user-name {
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+.skip-link {
+  position: absolute;
+  z-index: 200;
+  top: var(--space-2);
+  left: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+  transform: translateY(-200%);
+}
+.skip-link:focus-visible {
+  transform: none;
+}
+.main {
+  min-width: 0;
+  padding: var(--space-8) var(--space-8) var(--space-12);
+}
+.content {
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+.topbar,
+.bottom-nav {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar {
+    display: none;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    height: 56px;
+    padding: 0 var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .main {
+    padding: var(--space-5) var(--space-4)
+      calc(var(--bottom-nav-height) + var(--space-8) + env(safe-area-inset-bottom));
+  }
+  .bottom-nav {
+    position: fixed;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .bottom-nav .nav-link {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    height: 100%;
+    padding: 0;
+    border-radius: 0;
+    font-size: var(--text-xs);
+  }
+  .bottom-nav .nav-link[aria-current="page"] {
+    background: none;
+    color: var(--color-accent-hover);
+  }
+}
+
+/* Logged-out / loading screen */
+.splash {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--space-6);
+}
+.login-card {
+  width: min(420px, 100%);
+  text-align: center;
+}
+.login-card .brand {
+  justify-content: center;
+  margin-bottom: var(--space-6);
+}
+.login-card h1 {
+  font-size: var(--text-xl);
+}
+.login-card p {
+  margin: var(--space-2) 0 var(--space-6);
+  color: var(--color-text-muted);
+}
+.feature-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-6) 0 0;
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--color-border);
+  list-style: none;
+  text-align: left;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+.feature-list li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.feature-list svg {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}

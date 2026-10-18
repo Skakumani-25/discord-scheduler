@@ -1,14 +1,22 @@
-import { useState } from "react";
-import StatusBadge from "./StatusBadge";
+import { useId, useState } from "react";
+import { Check, X } from "lucide-react";
+import { api, errorMessage } from "../api";
 import { STATUS_OPTIONS, type StatusValue, type UserStatus } from "../status";
 import { isoToZonedInput, useTimezone, zonedInputToIso } from "../time";
+import { useNow } from "../useNow";
+import StatusBadge from "./StatusBadge";
+import Alert from "./ui/Alert";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
+import Field from "./ui/Field";
+import { useToast } from "./ui/toast-context";
 
 const EXPIRY_OPTIONS = [
   { value: "never", label: "Don't clear" },
-  { value: "30", label: "30 minutes" },
-  { value: "60", label: "1 hour" },
-  { value: "240", label: "4 hours" },
-  { value: "today", label: "End of today" },
+  { value: "30", label: "After 30 minutes" },
+  { value: "60", label: "After 1 hour" },
+  { value: "240", label: "After 4 hours" },
+  { value: "today", label: "At the end of today" },
 ];
 
 function expiryToIso(choice: string, tz: string): string | null {
@@ -30,67 +38,107 @@ export default function MyStatus({
   onSaved: (status: UserStatus) => void;
 }) {
   const tz = useTimezone();
+  const toast = useToast();
+  const now = useNow();
+  const legendId = useId();
   const [status, setStatus] = useState<StatusValue>(current?.status ?? "AVAILABLE");
   const [note, setNote] = useState(current?.note ?? "");
   const [expiry, setExpiry] = useState("never");
   const [error, setError] = useState("");
 
-  async function save(body: object) {
+  async function save(body: object, message: string) {
     setError("");
-    const res = await fetch("/api/me/status", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(data.error ?? "Could not update status");
-      return;
+    try {
+      const data = await api<{ status: UserStatus }>("/api/me/status", { method: "PUT", body });
+      onSaved(data.status);
+      toast.success(message);
+    } catch (err) {
+      setError(errorMessage(err));
     }
-    onSaved(data.status);
   }
 
   return (
-    <section style={{ marginTop: 16, padding: 12, border: "1px solid #ccc", borderRadius: 8 }}>
-      <h3 style={{ marginTop: 0 }}>My status</h3>
-      <p style={{ marginTop: 0 }}>
-        {current ? (
-          <>
-            Showing to your groups: <StatusBadge status={current} />
-          </>
-        ) : (
-          "No status set. Members of your groups see only your time blocks."
-        )}
-      </p>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={status} onChange={(e) => setStatus(e.target.value as StatusValue)}>
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <input
-          placeholder="Note (optional), e.g. free after 8"
-          maxLength={100}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          style={{ minWidth: 220 }}
-        />
-        <label>
-          Clear after:{" "}
-          <select value={expiry} onChange={(e) => setExpiry(e.target.value)}>
-            {EXPIRY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
+    <Card
+      title="Your status"
+      description="Shown next to your name in every group you're in. No time block needed."
+      actions={
+        current && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={X}
+            onClick={() => save({ status: null }, "Status cleared")}
+          >
+            Clear status
+          </Button>
+        )
+      }
+    >
+      <form className="stack" onSubmit={(e) => e.preventDefault()}>
+        <div className="current-status">
+          <span className="subtle">Currently showing</span>
+          {current ? <StatusBadge status={current} now={now} /> : <span className="muted">No status</span>}
+        </div>
+
+        <fieldset className="fieldset">
+          <legend id={legendId}>Status</legend>
+          <div className="segmented" role="group" aria-labelledby={legendId}>
+            {STATUS_OPTIONS.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                className={`segment status-segment status-${value}`}
+                aria-pressed={status === value}
+                onClick={() => setStatus(value)}
+              >
+                <Icon size={15} aria-hidden />
+                {label}
+              </button>
             ))}
-          </select>
-        </label>
-        <button onClick={() => save({ status, note, expiresAt: expiryToIso(expiry, tz) })}>Set status</button>
-        {current && <button onClick={() => save({ status: null })}>Clear</button>}
-      </div>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-    </section>
+          </div>
+        </fieldset>
+
+        <div className="form-row">
+          <Field label="Note" optional hint="Up to 100 characters">
+            {(props) => (
+              <input
+                {...props}
+                className="input"
+                maxLength={100}
+                placeholder="e.g. free after 8"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Clear automatically">
+            {(props) => (
+              <select {...props} className="select" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+                {EXPIRY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        </div>
+
+        {error && <Alert tone="danger">{error}</Alert>}
+
+        <div className="form-actions">
+          <Button
+            type="submit"
+            variant="primary"
+            icon={Check}
+            onClick={() =>
+              save({ status, note, expiresAt: expiryToIso(expiry, tz) }, current ? "Status updated" : "Status set")
+            }
+          >
+            {current ? "Update status" : "Set status"}
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }

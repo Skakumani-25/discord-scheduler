@@ -1,5 +1,8 @@
+import type { ReactNode } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { addDays, weekLabel } from "../../calendar";
 import { CATEGORIES, CATEGORY_INFO } from "../../categories";
+import Button from "../ui/Button";
 import "./WeekGrid.css";
 
 export function WeekToolbar({
@@ -7,47 +10,60 @@ export function WeekToolbar({
   currentWeekStart,
   onChange,
   disablePast = false,
+  status,
 }: {
   weekStart: string;
   currentWeekStart: string;
   onChange: (weekStart: string) => void;
   disablePast?: boolean;
+  // e.g. a loading indicator, shown after the week label
+  status?: ReactNode;
 }) {
   return (
     <div className="wg-toolbar">
-      <button
+      <Button
+        size="sm"
+        icon={ChevronLeft}
+        iconOnly
+        aria-label="Previous week"
         onClick={() => onChange(addDays(weekStart, -7))}
         disabled={disablePast && weekStart <= currentWeekStart}
-        aria-label="Previous week"
-      >
-        ‹ Prev
-      </button>
-      <button onClick={() => onChange(currentWeekStart)} disabled={weekStart === currentWeekStart}>
+      />
+      <Button size="sm" onClick={() => onChange(currentWeekStart)} disabled={weekStart === currentWeekStart}>
         Today
-      </button>
-      <button onClick={() => onChange(addDays(weekStart, 7))} aria-label="Next week">
-        Next ›
-      </button>
-      <span className="wg-week">{weekLabel(weekStart)}</span>
+      </Button>
+      <Button
+        size="sm"
+        icon={ChevronRight}
+        iconOnly
+        aria-label="Next week"
+        onClick={() => onChange(addDays(weekStart, 7))}
+      />
+      <span className="wg-week" aria-live="polite">
+        {weekLabel(weekStart)}
+      </span>
+      {status}
     </div>
   );
 }
 
 export function CategoryLegend({ showOverlap = false }: { showOverlap?: boolean }) {
   return (
-    <div className="wg-legend">
-      {CATEGORIES.map((c) => (
-        <span key={c}>
-          <span className="wg-swatch" style={{ background: CATEGORY_INFO[c].color }} />
-          {CATEGORY_INFO[c].label}
-        </span>
-      ))}
+    <div className="legend" aria-label="Category legend">
+      {CATEGORIES.map((c) => {
+        const { color, text, label, icon: Icon } = CATEGORY_INFO[c];
+        return (
+          <span key={c} className="legend-item">
+            <span className="wg-swatch" style={{ background: color, color: text }}>
+              <Icon size={12} aria-hidden />
+            </span>
+            {label}
+          </span>
+        );
+      })}
       {showOverlap && (
-        <span>
-          <span
-            className="wg-swatch"
-            style={{ background: "rgba(0, 168, 252, 0.18)", border: "2px dashed #00a8fc" }}
-          />
+        <span className="legend-item">
+          <span className="wg-swatch wg-swatch-overlap" />
           Shared free time
         </span>
       )}

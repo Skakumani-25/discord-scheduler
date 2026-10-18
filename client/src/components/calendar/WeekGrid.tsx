@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import type { LucideIcon } from "lucide-react";
 import { assignLanes, dayLabels, hourLabel, segmentsFor } from "../../calendar";
 import "./WeekGrid.css";
 
@@ -10,6 +11,8 @@ export type GridBlock = {
   textColor: string;
   label: string;
   title: string;
+  // Shown on every block so categories don't rely on color alone
+  icon?: LucideIcon;
   // Fixed lane (e.g. one per group member); omit to stack overlapping blocks automatically
   lane?: number;
 };
@@ -154,7 +157,11 @@ export default function WeekGrid({
 
   return (
     <div className={`wg${editable ? " editable" : ""}`}>
-      {editable && pendingTap && <p className="wg-hint">Now tap the end cell (or the same cell for one hour).</p>}
+      {editable && pendingTap && (
+        <p className="wg-hint wg-hint-pending" role="status">
+          Now tap the end cell, or the same cell for one hour.
+        </p>
+      )}
       <div className="wg-scroll" ref={scrollRef}>
         <div className="wg-header">
           <div />
@@ -232,6 +239,7 @@ export default function WeekGrid({
                         color: p.block.textColor,
                       }}
                     >
+                      {p.block.icon && <p.block.icon size={12} aria-hidden />}
                       <span className="wg-block-label">{p.block.label}</span>
                     </div>
                   );

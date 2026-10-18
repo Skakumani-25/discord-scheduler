@@ -1,4 +1,14 @@
-import { useEffect, useState } from "react";
+import { Bot, ExternalLink, LogIn, Plus, RefreshCw, Server, ShieldCheck, UserPlus } from "lucide-react";
+import { api, errorMessage, useResource } from "../api";
+import { guildIconUrl } from "../discord";
+import { href, navigate } from "../router";
+import Alert from "./ui/Alert";
+import Avatar from "./ui/Avatar";
+import Badge from "./ui/Badge";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
+import { EmptyState, ErrorState, SkeletonRows } from "./ui/States";
+import { useToast } from "./ui/toast-context";
 
 type Guild = {
   id: string;
@@ -7,105 +17,142 @@ type Guild = {
   canManage: boolean;
   group: { id: string; isMember: boolean } | null;
 };
-type GuildsState =
-  | { status: "loading" }
-  | { status: "ok"; guilds: Guild[] }
-  | { status: "error"; error: string; reauth: boolean };
 
-async function fetchGuilds(): Promise<GuildsState> {
-  const res = await fetch("/api/discord/guilds");
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { status: "error", error: body.error ?? "Could not load your servers", reauth: !!body.reauth };
-  }
-  return { status: "ok", guilds: body };
+function InviteBotCard() {
+  const invite = useResource<{ url: string }>("/api/discord/invite-url");
+  return (
+    <Card
+      title="Add the bot to a server"
+      description="The bot needs to be in a server before you can make a group for it. It only asks to view channels, send messages and connect."
+    >
+      {invite.loading && <div className="skeleton skeleton-button" />}
+      {invite.error && (
+        <Alert tone="warning" title="Bot invite link unavailable">
+          {invite.error.status === 503
+            ? "The server doesn't have a Discord client ID configured, so it can't build an invite link."
+            : invite.error.message}
+        </Alert>
+      )}
+      {invite.data && (
+        <a className="btn btn-secondary" href={invite.data.url} target="_blank" rel="noreferrer">
+          <Bot size={16} aria-hidden />
+          Invite the bot
+          <ExternalLink size={14} aria-hidden />
+          <span className="visually-hidden">(opens in a new tab)</span>
+        </a>
+      )}
+    </Card>
+  );
 }
 
-export default function DiscordServers({ onOpenGroup }: { onOpenGroup: (groupId: string) => void }) {
-  const [state, setState] = useState<GuildsState>({ status: "loading" });
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
-  const [actionError, setActionError] = useState("");
+export default function DiscordServers() {
+  const toast = useToast();
+  const { data, error, loading, reload } = useResource<Guild[]>("/api/discord/guilds");
 
-  useEffect(() => {
-    fetchGuilds().then(setState);
-    fetch("/api/discord/invite-url")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body) => setInviteUrl(body?.url ?? null));
-  }, []);
-
-  async function reload() {
-    setState(await fetchGuilds());
+  async function act(path: "from-guild" | "join-guild", guild: Guild) {
+    try {
+      const group = await api<{ id: string }>(`/api/groups/${path}`, {
+        method: "POST",
+        body: { guildId: guild.id },
+      });
+      toast.success(path === "from-guild" ? `Created a group for ${guild.name}` : `Joined ${guild.name}`);
+      navigate(`/groups/${group.id}`);
+    } catch (err) {
+      toast.error(errorMessage(err));
+      reload();
+    }
   }
 
-  async function act(path: "from-guild" | "join-guild", guildId: string) {
-    setActionError("");
-    const res = await fetch(`/api/groups/${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ guildId }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setActionError(body.error ?? "Something went wrong");
-      reload();
-      return;
-    }
-    await reload();
-    onOpenGroup(body.id);
+  let body;
+  if (loading && !data) {
+    body = <SkeletonRows rows={3} />;
+  } else if (error?.body?.reauth) {
+    body = (
+      <EmptyState
+        icon={LogIn}
+        title="Reconnect Discord to see your servers"
+        action={
+          <a className="btn btn-primary" href="/auth/discord">
+            <LogIn size={16} aria-hidden />
+            Log in with Discord
+          </a>
+        }
+      >
+        Your Discord sign-in has expired. Logging in again lets us read which servers you're in.
+      </EmptyState>
+    );
+  } else if (error) {
+    body = (
+      <ErrorState
+        title={error.status === 503 ? "The bot is offline" : "Couldn't load your servers"}
+        message={
+          error.status === 503
+            ? "Server groups need the Discord bot, and it isn't connected right now. Try again in a minute."
+            : error.message
+        }
+        onRetry={reload}
+      />
+    );
+  } else if (data && data.length === 0) {
+    body = (
+      <EmptyState icon={Server} title="None of your servers have the bot yet">
+        Invite the bot to a server you're in, then refresh this list.
+      </EmptyState>
+    );
+  } else if (data) {
+    body = (
+      <ul className="list">
+        {data.map((g) => (
+          <li key={g.id} className="list-row">
+            <Avatar src={guildIconUrl(g.id, g.icon, 64)} name={g.name} size={40} square />
+            <div className="list-row-main">
+              <div className="list-row-title truncate">{g.name}</div>
+              <div className="cluster">
+                {g.canManage && (
+                  <Badge icon={ShieldCheck} tone="accent">
+                    You manage this server
+                  </Badge>
+                )}
+                <span className="list-row-meta">
+                  {!g.group ? "No group yet" : g.group.isMember ? "You're in this group" : "Group available"}
+                </span>
+              </div>
+            </div>
+            {!g.group && (
+              <Button variant="primary" size="sm" icon={Plus} onClick={() => act("from-guild", g)}>
+                Create group
+              </Button>
+            )}
+            {g.group && !g.group.isMember && (
+              <Button size="sm" icon={UserPlus} onClick={() => act("join-guild", g)}>
+                Join group
+              </Button>
+            )}
+            {g.group?.isMember && (
+              <a className="btn btn-ghost btn-sm" href={href(`/groups/${g.group.id}`)}>
+                Open group
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
   }
 
   return (
-    <section style={{ marginTop: 16, padding: 12, border: "1px solid #ccc", borderRadius: 8 }}>
-      <h3 style={{ marginTop: 0 }}>Add a Discord server</h3>
-      {inviteUrl && (
-        <p>
-          Bot not in your server yet?{" "}
-          <a href={inviteUrl} target="_blank" rel="noreferrer">
-            Invite the bot
-          </a>
-          , then <button onClick={reload}>Refresh</button>
-        </p>
-      )}
-
-      {state.status === "loading" && <p>Loading your servers...</p>}
-      {state.status === "error" && (
-        <p style={{ color: "red" }}>
-          {state.error} {state.reauth && <a href="/auth/discord">Log in again</a>}
-        </p>
-      )}
-      {actionError && <p style={{ color: "red" }}>{actionError}</p>}
-
-      {state.status === "ok" && state.guilds.length === 0 && (
-        <p>None of your servers have the bot yet.</p>
-      )}
-      {state.status === "ok" && state.guilds.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0 }}>
-          {state.guilds.map((g) => (
-            <li key={g.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              {g.icon ? (
-                <img
-                  src={`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=32`}
-                  alt=""
-                  width={24}
-                  height={24}
-                  style={{ borderRadius: "50%" }}
-                />
-              ) : (
-                <span style={{ width: 24 }} />
-              )}
-              <span>
-                {g.name}
-                {g.canManage && <small> (you manage this server)</small>}
-              </span>
-              {!g.group && <button onClick={() => act("from-guild", g.id)}>Create group</button>}
-              {g.group && !g.group.isMember && (
-                <button onClick={() => act("join-guild", g.id)}>Join this server's group</button>
-              )}
-              {g.group?.isMember && <button onClick={() => onOpenGroup(g.group!.id)}>Open</button>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <div className="page-stack">
+      <Card
+        title="Your servers with the bot"
+        description="Only servers you share with the bot are listed. Anyone in the server can join its group."
+        actions={
+          <Button size="sm" variant="ghost" icon={RefreshCw} onClick={reload} loading={loading && !!data}>
+            Refresh
+          </Button>
+        }
+      >
+        {body}
+      </Card>
+      <InviteBotCard />
+    </div>
   );
 }

@@ -1,10 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { CalendarPlus, LoaderCircle, MousePointerClick, Plus, Repeat, Trash2 } from "lucide-react";
+import { api, errorMessage, useResource } from "../api";
 import { addDays, dayLabels, startOfWeek, todayInZone, weekDays, weekRangeIso } from "../calendar";
 import { CATEGORIES, CATEGORY_INFO, categoryInfo, type Category } from "../categories";
 import { formatDateTime, formatTime, inputZoneLabel, useTimezone, zonedInputToIso } from "../time";
 import WeekGrid, { type Anchor, type GridSelection } from "./calendar/WeekGrid";
 import Popover from "./calendar/Popover";
 import { CategoryLegend, WeekToolbar } from "./calendar/CalendarParts";
+import Alert from "./ui/Alert";
+import Button from "./ui/Button";
+import Card from "./ui/Card";
+import Field from "./ui/Field";
+import { useToast } from "./ui/toast-context";
 
 type Block = {
   id: string;
@@ -17,9 +24,22 @@ type Block = {
 const MAX_WEEKS = 12;
 const pad = (n: number) => String(n).padStart(2, "0");
 const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-function rangeLabel(b: { startsAt: string; endsAt: string }, tz: string) {
-  return `${formatTime(b.startsAt, tz)} – ${formatTime(b.endsAt, tz)}`;
+function CategorySelect({ value, onChange }: { value: Category; onChange: (c: Category) => void }) {
+  return (
+    <Field label="Category">
+      {(props) => (
+        <select {...props} className="select" value={value} onChange={(e) => onChange(e.target.value as Category)}>
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {CATEGORY_INFO[c].label}
+            </option>
+          ))}
+        </select>
+      )}
+    </Field>
+  );
 }
 
 // Popover body for a new selection: category, exact times, note, weekly repeat
@@ -35,7 +55,7 @@ function NewBlockForm({
   selection: GridSelection;
   defaultCategory: Category;
   tz: string;
-  onCreated: (category: Category) => void;
+  onCreated: (category: Category, count: number) => void;
   onCancel: () => void;
 }) {
   const [category, setCategory] = useState<Category>(defaultCategory);
@@ -44,111 +64,120 @@ function NewBlockForm({
   const [end, setEnd] = useState(`${pad(selection.endHour % 24)}:00`);
   const [note, setNote] = useState("");
   const [repeat, setRepeat] = useState(false);
-  const [weeks, setWeeks] = useState(4);
+  const [weeks, setWeeks] = useState("4");
+  const [timeError, setTimeError] = useState("");
+  const [weeksError, setWeeksError] = useState("");
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
 
   const selectedDays = days.slice(selection.startDay, selection.endDay + 1);
-  const totalWeeks = repeat ? weeks : 1;
+  const totalWeeks = repeat ? Number(weeks) : 1;
   const first = dayLabels(selectedDays[0]).long;
   const last = dayLabels(selectedDays[selectedDays.length - 1]).long;
+  const count = selectedDays.length * (Number.isInteger(totalWeeks) ? totalWeeks : 1);
 
   async function create() {
     setError("");
     const endMinutes = end === "00:00" ? 1440 : toMinutes(end);
-    if (endMinutes <= toMinutes(start)) {
-      setError("End time must be after start time");
-      return;
-    }
-    if (!Number.isInteger(totalWeeks) || totalWeeks < 1 || totalWeeks > MAX_WEEKS) {
-      setError(`Repeat for 1 to ${MAX_WEEKS} weeks`);
-      return;
-    }
+    const badTime = !start || !end || endMinutes <= toMinutes(start);
+    const badWeeks = repeat && (!Number.isInteger(totalWeeks) || totalWeeks < 2 || totalWeeks > MAX_WEEKS);
+    setTimeError(badTime ? "End time must be after the start time." : "");
+    setWeeksError(badWeeks ? `Enter a whole number from 2 to ${MAX_WEEKS}.` : "");
+    if (badTime || badWeeks) return;
+
     const slots = selectedDays.map((d) => ({
       startsAt: zonedInputToIso(`${d}T${start}`, tz),
       endsAt: end === "00:00" ? zonedInputToIso(`${addDays(d, 1)}T00:00`, tz) : zonedInputToIso(`${d}T${end}`, tz),
     }));
-    setSaving(true);
     try {
-      const res = await fetch("/api/availability/bulk", {
+      const created = await api<Block[]>("/api/availability/bulk", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, note, slots, weeks: totalWeeks }),
+        body: { category, note, slots, weeks: totalWeeks },
       });
-      if (!res.ok) {
-        setError((await res.json().catch(() => ({}))).error ?? "Could not save");
-        return;
-      }
-      onCreated(category);
-    } finally {
-      setSaving(false);
+      onCreated(category, created.length);
+    } catch (err) {
+      // Keep everything entered so the user can fix it and retry
+      setError(errorMessage(err));
     }
   }
 
   return (
-    <>
-      <strong>New availability</strong>
+    <form
+      className="stack"
+      onSubmit={(e) => {
+        e.preventDefault();
+      }}
+    >
       <div>
-        {selectedDays.length === 1 ? first : `${first} – ${last} (${selectedDays.length} days)`}
+        <h2 className="popover-title">Add availability</h2>
+        <p className="subtle">
+          {selectedDays.length === 1 ? first : `${first} – ${last} · ${plural(selectedDays.length, "day")}`}
+        </p>
       </div>
-      <label>
-        Category{" "}
-        <select value={category} onChange={(e) => setCategory(e.target.value as Category)}>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORY_INFO[c].label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="row">
-        <label>
-          From <input type="time" step={900} value={start} onChange={(e) => setStart(e.target.value)} />
-        </label>
-        <label>
-          to <input type="time" step={900} value={end} onChange={(e) => setEnd(e.target.value)} />
-        </label>
-        <span>{inputZoneLabel(`${selectedDays[0]}T${start}`, tz)}</span>
+      <CategorySelect value={category} onChange={setCategory} />
+      <div className="form-row">
+        <Field label="From" error={timeError || undefined}>
+          {(props) => (
+            <input {...props} className="input" type="time" step={900} value={start} onChange={(e) => setStart(e.target.value)} />
+          )}
+        </Field>
+        <Field label="To" hint={`Times in ${inputZoneLabel(`${selectedDays[0]}T${start}`, tz)}`}>
+          {(props) => (
+            <input {...props} className="input" type="time" step={900} value={end} onChange={(e) => setEnd(e.target.value)} />
+          )}
+        </Field>
       </div>
-      <label>
-        Note <input maxLength={200} placeholder="Optional" value={note} onChange={(e) => setNote(e.target.value)} />
-      </label>
-      <div className="row">
-        <label>
-          <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} /> Repeat weekly
+      <Field label="Note" optional>
+        {(props) => (
+          <input
+            {...props}
+            className="input"
+            maxLength={200}
+            placeholder="e.g. ranked only"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        )}
+      </Field>
+      <div className="stack-sm">
+        <label className="checkbox">
+          <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
+          <Repeat size={15} aria-hidden />
+          Repeat weekly
         </label>
         {repeat && (
-          <label>
-            for{" "}
-            <input
-              type="number"
-              min={2}
-              max={MAX_WEEKS}
-              value={weeks}
-              onChange={(e) => setWeeks(Number(e.target.value))}
-              style={{ width: 56 }}
-            />{" "}
-            weeks
-          </label>
+          <Field label="Number of weeks" hint="Including this week" error={weeksError || undefined}>
+            {(props) => (
+              <input
+                {...props}
+                className="input"
+                type="number"
+                inputMode="numeric"
+                min={2}
+                max={MAX_WEEKS}
+                value={weeks}
+                onChange={(e) => setWeeks(e.target.value)}
+              />
+            )}
+          </Field>
         )}
       </div>
-      {selectedDays.length * totalWeeks > 1 && (
-        <small>Creates {selectedDays.length * totalWeeks} blocks</small>
-      )}
-      {error && <p style={{ color: "red", margin: "6px 0" }}>{error}</p>}
-      <div className="actions">
-        <button onClick={onCancel}>Cancel</button>
-        <button onClick={create} disabled={saving}>
-          {saving ? "Saving..." : "Add"}
-        </button>
+      {error && <Alert tone="danger">{error}</Alert>}
+      <div className="form-actions">
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" icon={Plus} onClick={create}>
+          {count > 1 ? `Add ${plural(count, "block")}` : "Add availability"}
+        </Button>
       </div>
-    </>
+    </form>
   );
 }
 
 // The original exact date/time form, for blocks the hourly grid can't express
-// (e.g. spanning midnight)
+// (e.g. spanning midnight) and for keyboard-only use
 function ExactTimeForm({ tz, onCreated }: { tz: string; onCreated: () => void }) {
+  const toast = useToast();
   const [category, setCategory] = useState<Category>("GAMING");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -157,42 +186,50 @@ function ExactTimeForm({ tz, onCreated }: { tz: string; onCreated: () => void })
 
   async function add() {
     setError("");
-    const res = await fetch("/api/availability", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category,
-        startsAt: zonedInputToIso(start, tz),
-        endsAt: zonedInputToIso(end, tz),
-        note,
-      }),
-    });
-    if (!res.ok) {
-      setError((await res.json().catch(() => ({}))).error ?? "Something went wrong");
+    if (!start || !end) {
+      setError("Choose a start and end date and time.");
       return;
     }
-    setNote("");
-    onCreated();
+    try {
+      await api("/api/availability", {
+        method: "POST",
+        body: { category, startsAt: zonedInputToIso(start, tz), endsAt: zonedInputToIso(end, tz), note },
+      });
+      setNote("");
+      toast.success("Availability added");
+      onCreated();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
   }
 
   return (
-    <details style={{ marginTop: 8, textAlign: "left" }}>
+    <details className="disclosure">
       <summary>Add with exact dates and times</summary>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-        <select value={category} onChange={(e) => setCategory(e.target.value as Category)}>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORY_INFO[c].label}
-            </option>
-          ))}
-        </select>
-        <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
-        <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
-        <span>{inputZoneLabel(start || end, tz)}</span>
-        <input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-        <button onClick={add}>Add</button>
-      </div>
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      <form className="stack disclosure-body" onSubmit={(e) => e.preventDefault()}>
+        <div className="form-row">
+          <CategorySelect value={category} onChange={setCategory} />
+          <Field label="Starts">
+            {(props) => (
+              <input {...props} className="input" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+            )}
+          </Field>
+          <Field label="Ends" hint={`Times in ${inputZoneLabel(start || end, tz)}`}>
+            {(props) => (
+              <input {...props} className="input" type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+            )}
+          </Field>
+          <Field label="Note" optional>
+            {(props) => <input {...props} className="input" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />}
+          </Field>
+        </div>
+        {error && <Alert tone="danger">{error}</Alert>}
+        <div className="form-actions">
+          <Button type="submit" variant="secondary" icon={CalendarPlus} onClick={add}>
+            Add availability
+          </Button>
+        </div>
+      </form>
     </details>
   );
 }
@@ -204,87 +241,119 @@ type PopoverState =
 
 export default function Availability() {
   const tz = useTimezone();
+  const toast = useToast();
   const today = useMemo(() => todayInZone(tz), [tz]);
   const currentWeek = startOfWeek(today);
   const [weekStart, setWeekStart] = useState(currentWeek);
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
-
-  const [blocks, setBlocks] = useState<Block[]>([]);
-  const [reloadKey, setReloadKey] = useState(0);
   const [popover, setPopover] = useState<PopoverState>(null);
   const [lastCategory, setLastCategory] = useState<Category>("GAMING");
-  const [error, setError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
+  const path = useMemo(() => {
     const { from, to } = weekRangeIso(weekStart, tz);
-    fetch(`/api/availability?${new URLSearchParams({ from, to })}`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => !cancelled && setBlocks(data));
-    return () => {
-      cancelled = true;
-    };
-  }, [weekStart, tz, reloadKey]);
-
-  const reload = () => setReloadKey((k) => k + 1);
+    return `/api/availability?${new URLSearchParams({ from, to })}`;
+  }, [weekStart, tz]);
+  const { data, error, loading, reload } = useResource<Block[]>(path);
+  const blocks = data ?? [];
   const close = () => setPopover(null);
 
-  async function remove(id: string) {
-    setError("");
-    const res = await fetch(`/api/availability/${id}`, { method: "DELETE" });
-    if (!res.ok) setError("Could not delete that block");
-    close();
-    reload();
+  async function remove(block: Block) {
+    try {
+      await api(`/api/availability/${block.id}`, { method: "DELETE" });
+      toast.success("Availability deleted");
+      close();
+      reload();
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
   }
 
   const gridBlocks = blocks.map((b) => {
     const info = categoryInfo(b.category);
-    const range = rangeLabel(b, tz);
+    const range = `${formatTime(b.startsAt, tz)} – ${formatTime(b.endsAt, tz)}`;
     return {
       id: b.id,
       startsAt: b.startsAt,
       endsAt: b.endsAt,
       color: info.color,
       textColor: info.text,
+      icon: info.icon,
       label: b.note ? `${info.label}: ${b.note}` : info.label,
-      title: `${info.label} · ${range}${b.note ? ` · ${b.note}` : ""} (click to delete)`,
+      title: `${info.label}, ${range}${b.note ? `, ${b.note}` : ""}. Select to delete.`,
     };
   });
 
   return (
-    <div style={{ marginTop: 24 }}>
-      <h2>My availability</h2>
-      <WeekToolbar weekStart={weekStart} currentWeekStart={currentWeek} onChange={setWeekStart} />
-      <CategoryLegend />
-      <p className="wg-hint">
-        Drag across the grid to add time (on a phone, tap a start cell then an end cell). Click a block to
-        delete it.
-      </p>
-      {error && <p style={{ color: "red" }}>{error}</p>}
+    <Card
+      title="Weekly availability"
+      description="Drag across the calendar to add time. On a touch screen, tap a start cell, then an end cell. Select a block to delete it."
+    >
+      <div className="stack">
+        <div className="cluster-between">
+          <WeekToolbar
+            weekStart={weekStart}
+            currentWeekStart={currentWeek}
+            onChange={setWeekStart}
+            status={
+              loading && (
+                <span className="wg-hint">
+                  <LoaderCircle size={14} className="spin" aria-hidden />
+                  Loading
+                </span>
+              )
+            }
+          />
+          <CategoryLegend />
+        </div>
 
-      <WeekGrid
-        days={days}
-        tz={tz}
-        today={today}
-        blocks={gridBlocks}
-        selection={popover?.kind === "create" ? popover.selection : null}
-        onSelect={(selection, anchor) => setPopover({ kind: "create", selection, anchor })}
-        onBlockClick={(id, anchor) => {
-          const block = blocks.find((b) => b.id === id);
-          if (block) setPopover({ kind: "delete", block, anchor });
-        }}
-      />
+        {error && (
+          <Alert
+            tone="danger"
+            title="Couldn't load this week's availability"
+            action={
+              <Button size="sm" onClick={reload}>
+                Try again
+              </Button>
+            }
+          >
+            {error.message}
+          </Alert>
+        )}
+
+        <WeekGrid
+          days={days}
+          tz={tz}
+          today={today}
+          blocks={gridBlocks}
+          selection={popover?.kind === "create" ? popover.selection : null}
+          onSelect={(selection, anchor) => setPopover({ kind: "create", selection, anchor })}
+          onBlockClick={(id, anchor) => {
+            const block = blocks.find((b) => b.id === id);
+            if (block) setPopover({ kind: "delete", block, anchor });
+          }}
+        />
+
+        {!loading && !error && blocks.length === 0 && (
+          <p className="wg-hint">
+            <MousePointerClick size={15} aria-hidden />
+            Nothing this week yet. Drag across the hours you're free to add them.
+          </p>
+        )}
+
+        <ExactTimeForm tz={tz} onCreated={reload} />
+      </div>
 
       {popover?.kind === "create" && (
-        <Popover anchor={popover.anchor} label="New availability" onClose={close}>
+        <Popover anchor={popover.anchor} label="Add availability" onClose={close}>
           <NewBlockForm
             days={days}
             selection={popover.selection}
             defaultCategory={lastCategory}
             tz={tz}
             onCancel={close}
-            onCreated={(category) => {
+            onCreated={(category, count) => {
               setLastCategory(category);
+              toast.success(count > 1 ? `Added ${plural(count, "block")}` : "Availability added");
               close();
               reload();
             }}
@@ -293,21 +362,26 @@ export default function Availability() {
       )}
       {popover?.kind === "delete" && (
         <Popover anchor={popover.anchor} label="Delete availability" onClose={close}>
-          <strong>{categoryInfo(popover.block.category).label}</strong>
-          <div>
-            {formatDateTime(popover.block.startsAt, tz)} – {formatTime(popover.block.endsAt, tz)}
-          </div>
-          {popover.block.note && <div>{popover.block.note}</div>}
-          <div className="actions">
-            <button onClick={close}>Cancel</button>
-            <button onClick={() => remove(popover.block.id)} style={{ color: "#f23f43" }}>
-              Delete
-            </button>
+          <div className="stack">
+            <div>
+              <h2 className="popover-title">Delete this block?</h2>
+              <p className="muted">
+                {categoryInfo(popover.block.category).label} · {formatDateTime(popover.block.startsAt, tz)} –{" "}
+                {formatTime(popover.block.endsAt, tz)}
+              </p>
+              {popover.block.note && <p className="subtle break-words">{popover.block.note}</p>}
+            </div>
+            <div className="form-actions">
+              <Button variant="ghost" onClick={close}>
+                Keep it
+              </Button>
+              <Button variant="danger" icon={Trash2} onClick={() => remove(popover.block)}>
+                Delete
+              </Button>
+            </div>
           </div>
         </Popover>
       )}
-
-      <ExactTimeForm tz={tz} onCreated={reload} />
-    </div>
+    </Card>
   );
 }
