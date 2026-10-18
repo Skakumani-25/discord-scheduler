@@ -11,9 +11,42 @@ export function browserTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
-export function listTimeZones(): string[] {
-  const zones = Intl.supportedValuesOf("timeZone");
-  return zones.includes("UTC") ? zones : ["UTC", ...zones];
+// Common zones with plain-English labels; values stay IANA so DST is handled
+const COMMON_ZONES: { value: string; label: string }[] = [
+  { value: "Pacific/Honolulu", label: "Hawaii (HST)" },
+  { value: "America/Anchorage", label: "Alaska (AKST/AKDT)" },
+  { value: "America/Los_Angeles", label: "Pacific (PST/PDT)" },
+  { value: "America/Phoenix", label: "Arizona (MST)" },
+  { value: "America/Denver", label: "Mountain (MST/MDT)" },
+  { value: "America/Chicago", label: "Central (CST/CDT)" },
+  { value: "America/New_York", label: "Eastern (EST/EDT)" },
+  { value: "America/Halifax", label: "Atlantic (AST/ADT)" },
+  { value: "America/Sao_Paulo", label: "Brazil (BRT)" },
+  { value: "UTC", label: "UTC" },
+  { value: "Europe/London", label: "UK (GMT/BST)" },
+  { value: "Europe/Paris", label: "Central Europe (CET/CEST)" },
+  { value: "Europe/Athens", label: "Eastern Europe (EET/EEST)" },
+  { value: "Europe/Moscow", label: "Moscow (MSK)" },
+  { value: "Asia/Dubai", label: "Gulf (GST)" },
+  { value: "Asia/Kolkata", label: "India (IST)" },
+  { value: "Asia/Shanghai", label: "China (CST)" },
+  { value: "Asia/Tokyo", label: "Japan (JST)" },
+  { value: "Asia/Seoul", label: "Korea (KST)" },
+  { value: "Australia/Sydney", label: "Australia Eastern (AEST/AEDT)" },
+  { value: "Pacific/Auckland", label: "New Zealand (NZST/NZDT)" },
+];
+
+export function timeZoneLabel(tz: string) {
+  return COMMON_ZONES.find((z) => z.value === tz)?.label ?? tz.replace(/_/g, " ");
+}
+
+// Common zones, plus any extra (saved or device) zone that isn't in the list
+export function listTimeZones(extra: string[] = []) {
+  const zones = [...COMMON_ZONES];
+  for (const tz of extra) {
+    if (!zones.some((z) => z.value === tz)) zones.push({ value: tz, label: timeZoneLabel(tz) });
+  }
+  return zones;
 }
 
 // "Oct 18, 2026, 7:00 PM PDT"

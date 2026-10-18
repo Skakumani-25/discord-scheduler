@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Save } from "lucide-react";
 import { api, errorMessage } from "../api";
-import { browserTimeZone, listTimeZones } from "../time";
+import { browserTimeZone, listTimeZones, timeZoneLabel } from "../time";
 import Alert from "./ui/Alert";
 import Button from "./ui/Button";
 import Card from "./ui/Card";
@@ -28,7 +28,7 @@ export default function Settings({
 }) {
   const toast = useToast();
   const browserTz = browserTimeZone();
-  const zones = useMemo(() => listTimeZones(), []);
+  const zones = useMemo(() => listTimeZones([settings.timezone, browserTz]), [settings.timezone, browserTz]);
   // "UTC" is the account default, so suggest the browser's zone until the user picks one
   const [timezone, setTimezone] = useState(settings.timezone === "UTC" ? browserTz : settings.timezone);
   const [reminderMinutes, setReminderMinutes] = useState(settings.reminderMinutes);
@@ -62,7 +62,7 @@ export default function Settings({
       <form className="stack" onSubmit={(e) => e.preventDefault()}>
         {settings.timezone === "UTC" && browserTz !== "UTC" && (
           <Alert tone="info" title="Times are shown in UTC">
-            Your device is set to {browserTz}. Save it below so times match your clock.
+            Your device is set to {timeZoneLabel(browserTz)}. Save it below so times match your clock.
           </Alert>
         )}
         <div className="form-row">
@@ -70,9 +70,9 @@ export default function Settings({
             {(props) => (
               <select {...props} className="select" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
                 {zones.map((z) => (
-                  <option key={z} value={z}>
-                    {z.replace(/_/g, " ")}
-                    {z === browserTz ? " (this device)" : ""}
+                  <option key={z.value} value={z.value}>
+                    {z.label}
+                    {z.value === browserTz ? " (this device)" : ""}
                   </option>
                 ))}
               </select>
