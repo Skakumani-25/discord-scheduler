@@ -6,6 +6,8 @@ import { announceEvent } from "../bot/announcements";
 
 const router = Router();
 
+const MAX_DESCRIPTION = 1000;
+
 function getMembership(groupId: string, userId: string) {
   return prisma.groupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
@@ -80,6 +82,14 @@ router.post("/groups/:id/events", async (req, res) => {
   }
   if (start <= new Date()) {
     res.status(400).json({ error: "Start time must be in the future" });
+    return;
+  }
+  if (
+    description !== undefined &&
+    description !== null &&
+    (typeof description !== "string" || description.length > MAX_DESCRIPTION)
+  ) {
+    res.status(400).json({ error: `Description must be text of at most ${MAX_DESCRIPTION} characters` });
     return;
   }
 

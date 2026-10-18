@@ -5,14 +5,29 @@ import { addWeeksInZone } from "../services/zonedTime";
 
 const router = Router();
 
+const MAX_NOTE = 200;
+const MAX_BLOCK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function parseOptionalDate(value: unknown): Date | null | "invalid" {
+  if (value === undefined) return null;
+  if (typeof value !== "string") return "invalid";
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? "invalid" : date;
+}
+
 // List my blocks (optionally within a date range)
 router.get("/", async (req, res) => {
-  const { from, to } = req.query;
+  const from = parseOptionalDate(req.query.from);
+  const to = parseOptionalDate(req.query.to);
+  if (from === "invalid" || to === "invalid") {
+    res.status(400).json({ error: "from and to must be ISO dates" });
+    return;
+  }
   const blocks = await prisma.availabilityBlock.findMany({
     where: {
       userId: res.locals.userId,
-      ...(typeof from === "string" && { endsAt: { gte: new Date(from) } }),
-      ...(typeof to === "string" && { startsAt: { lte: new Date(to) } }),
+      ...(from && { endsAt: { gte: from } }),
+      ...(to && { startsAt: { lte: to } }),
     },
     orderBy: { startsAt: "asc" },
   });
@@ -31,6 +46,14 @@ router.post("/", async (req, res) => {
   }
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
     res.status(400).json({ error: "End time must be after start time" });
+    return;
+  }
+  if (end.getTime() - start.getTime() > MAX_BLOCK_MS) {
+    res.status(400).json({ error: "A block can be at most 7 days long" });
+    return;
+  }
+  if (note !== undefined && note !== null && (typeof note !== "string" || note.length > MAX_NOTE)) {
+    res.status(400).json({ error: `Note must be text of at most ${MAX_NOTE} characters` });
     return;
   }
 
@@ -83,8 +106,8 @@ router.post("/bulk", async (req, res) => {
     }
     parsed.push({ start, end });
   }
-  if (note !== undefined && note !== null && (typeof note !== "string" || note.length > 200)) {
-    res.status(400).json({ error: "Note must be text of at most 200 characters" });
+  if (note !== undefined && note !== null && (typeof note !== "string" || note.length > MAX_NOTE)) {
+    res.status(400).json({ error: `Note must be text of at most ${MAX_NOTE} characters` });
     return;
   }
 

@@ -6,6 +6,10 @@ import { encryptSecret } from "../services/tokenCrypto";
 
 const router = Router();
 const DISCORD_API = "https://discord.com/api";
+const isProduction = process.env.NODE_ENV === "production";
+
+type DiscordToken = { access_token?: unknown; expires_in?: unknown };
+type DiscordProfile = { id?: unknown; username?: unknown; global_name?: unknown; avatar?: unknown };
 
 // Step 1: send the user to Discord
 router.get("/discord", (_req, res) => {
@@ -13,6 +17,7 @@ router.get("/discord", (_req, res) => {
   res.cookie("oauth_state", state, {
     httpOnly: true,
     sameSite: "lax",
+    secure: isProduction,
     maxAge: 10 * 60 * 1000,
   });
 
@@ -29,43 +34,72 @@ router.get("/discord", (_req, res) => {
 // Step 2: Discord sends them back here with a code
 router.get("/discord/callback", async (req, res) => {
   const { code, state } = req.query;
+  const expectedState = req.cookies?.oauth_state;
 
-  if (typeof code !== "string" || state !== req.cookies.oauth_state) {
-    res.status(400).send("Invalid OAuth request");
+  // Both must be present and equal; a missing state on both sides must not pass
+  if (
+    typeof code !== "string" ||
+    typeof state !== "string" ||
+    typeof expectedState !== "string" ||
+    !state ||
+    state !== expectedState
+  ) {
+    res.status(400).send("Invalid or expired login request. Go back and try logging in again.");
     return;
   }
-  res.clearCookie("oauth_state");
+  res.clearCookie("oauth_state", { httpOnly: true, sameSite: "lax", secure: isProduction });
 
-  // Exchange the code for an access token
-  const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: process.env.DISCORD_CLIENT_ID!,
-      client_secret: process.env.DISCORD_CLIENT_SECRET!,
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: process.env.DISCORD_REDIRECT_URI!,
-    }),
-  });
+  let token: DiscordToken;
+  let profile: DiscordProfile;
+  try {
+    // Exchange the code for an access token
+    const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.DISCORD_CLIENT_ID!,
+        client_secret: process.env.DISCORD_CLIENT_SECRET!,
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: process.env.DISCORD_REDIRECT_URI!,
+      }),
+    });
+    if (!tokenRes.ok) {
+      // Discord's error body (e.g. invalid_grant) has no secrets; cap it anyway
+      console.error(`Token exchange failed (${tokenRes.status}):`, (await tokenRes.text()).slice(0, 200));
+      res.status(400).send("Discord login failed. Go back and try again.");
+      return;
+    }
+    token = (await tokenRes.json()) as DiscordToken;
+    if (typeof token.access_token !== "string" || typeof token.expires_in !== "number") {
+      console.error("Token exchange returned an unexpected response");
+      res.status(502).send("Discord login failed. Go back and try again.");
+      return;
+    }
 
-  if (!tokenRes.ok) {
-    console.error("Token exchange failed:", await tokenRes.text());
-    res.status(400).send("Discord token exchange failed");
+    // Fetch the Discord profile
+    const userRes = await fetch(`${DISCORD_API}/users/@me`, {
+      headers: { Authorization: `Bearer ${token.access_token}` },
+    });
+    if (!userRes.ok) {
+      console.error(`Discord profile request failed (${userRes.status})`);
+      res.status(502).send("Couldn't read your Discord profile. Go back and try again.");
+      return;
+    }
+    profile = (await userRes.json()) as DiscordProfile;
+  } catch (err) {
+    console.error("Couldn't reach Discord during login:", (err as Error).message);
+    res.status(502).send("Couldn't reach Discord. Check your connection and try logging in again.");
     return;
   }
-  const token = (await tokenRes.json()) as { access_token: string; expires_in: number };
 
-  // Fetch the Discord profile
-  const userRes = await fetch(`${DISCORD_API}/users/@me`, {
-    headers: { Authorization: `Bearer ${token.access_token}` },
-  });
-  const profile = (await userRes.json()) as {
-    id: string;
-    username: string;
-    global_name?: string | null;
-    avatar: string | null;
-  };
+  if (typeof profile.id !== "string" || typeof profile.username !== "string") {
+    console.error("Discord profile response was missing id or username");
+    res.status(502).send("Couldn't read your Discord profile. Go back and try again.");
+    return;
+  }
+  const username = typeof profile.global_name === "string" && profile.global_name ? profile.global_name : profile.username;
+  const avatar = typeof profile.avatar === "string" ? profile.avatar : null;
 
   // Kept (encrypted) so we can list the user's servers later; never returned or logged
   const discordAuth = {
@@ -76,27 +110,19 @@ router.get("/discord/callback", async (req, res) => {
   // Create or update the user in our database
   const user = await prisma.user.upsert({
     where: { discordId: profile.id },
-    update: {
-      username: profile.global_name ?? profile.username,
-      avatar: profile.avatar,
-      ...discordAuth,
-    },
-    create: {
-      discordId: profile.id,
-      username: profile.global_name ?? profile.username,
-      avatar: profile.avatar,
-      ...discordAuth,
-    },
+    update: { username, avatar, ...discordAuth },
+    create: { discordId: profile.id, username, avatar, ...discordAuth },
   });
 
   // Log them in with a signed cookie
   const jwtToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET!, {
+    algorithm: "HS256",
     expiresIn: "7d",
   });
   res.cookie("token", jwtToken, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isProduction,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
