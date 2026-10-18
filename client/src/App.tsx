@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Availability from "./Availability";
+import Groups from "./Groups";
 
 type User = {
   id: string;
@@ -44,6 +45,7 @@ function App() {
     <p>Logged in as <strong>{user.username}</strong></p>
     <button onClick={logout}>Log out</button>
     <Availability />
+    <Groups />
   </div>
 ) : (
   <a href="/auth/discord">Login with Discord</a>

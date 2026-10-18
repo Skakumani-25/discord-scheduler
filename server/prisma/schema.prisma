@@ -22,6 +22,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   availability AvailabilityBlock[]
+  memberships GroupMember[]
 }
 
 enum Category {
@@ -43,4 +44,29 @@ model AvailabilityBlock {
   createdAt DateTime @default(now())
 
   @@index([userId, startsAt])
+}
+
+enum GroupRole {
+  OWNER
+  MEMBER
+}
+
+model Group {
+  id         String        @id @default(cuid())
+  name       String
+  inviteCode String        @unique
+  createdAt  DateTime      @default(now())
+  members    GroupMember[]
+}
+
+model GroupMember {
+  id       String    @id @default(cuid())
+  groupId  String
+  group    Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     GroupRole @default(MEMBER)
+  joinedAt DateTime  @default(now())
+
+  @@unique([groupId, userId])
 }
